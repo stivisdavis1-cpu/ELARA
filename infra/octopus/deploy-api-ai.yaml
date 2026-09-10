@@ -1,0 +1,7 @@
+steps:
+  - name: Deploy api-ai via Helm
+    action: Octopus.HelmChartUpgrade
+    properties:
+      Octopus.Action.Helm.ChartDirectory: infra/k8s/api-ai
+      Octopus.Action.Helm.ReleaseName: elara-api-ai
+      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/api-ai/values-#{Octopus.Environment.Name | ToLower}.yaml"

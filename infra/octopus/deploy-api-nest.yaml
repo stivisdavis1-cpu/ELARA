@@ -1,0 +1,7 @@
+steps:
+  - name: Deploy api-nest via Helm
+    action: Octopus.HelmChartUpgrade
+    properties:
+      Octopus.Action.Helm.ChartDirectory: infra/k8s/api-nest
+      Octopus.Action.Helm.ReleaseName: elara-api-nest
+      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/api-nest/values-#{Octopus.Environment.Name | ToLower}.yaml"

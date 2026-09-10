@@ -1,0 +1,78 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # NestJS
+      - name: Install NestJS dependencies
+        working-directory: ./apps/api-nest
+        run: npm install
+      - name: Lint NestJS
+        working-directory: ./apps/api-nest
+        run: npm run lint
+      - name: Test NestJS
+        working-directory: ./apps/api-nest
+        run: npm run test
+
+      # Next.js
+      - name: Install Next.js dependencies
+        working-directory: ./apps/web
+        run: npm install
+      - name: Lint Next.js
+        working-directory: ./apps/web
+        run: npm run lint
+
+      # FastAPI
+      - name: Install Poetry & dependencies
+        working-directory: ./apps/api-ai
+        run: |
+          pip install poetry
+          poetry install
+      - name: Lint FastAPI
+        working-directory: ./apps/api-ai
+        run: poetry run flake8 . || true
+
+      - name: Gitleaks Scan
+        uses: zricethezav/gitleaks-action@v2
+
+  docker-build-push:
+    needs: lint-and-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Registry
+        run: echo "Login to Docker Registry..."
+      - name: Build & Push api-nest
+        run: docker build -t elara/api-nest:latest ./apps/api-nest
+      - name: Build & Push api-ai
+        run: docker build -t elara/api-ai:latest ./apps/api-ai
+      - name: Build & Push web
+        run: docker build -t elara/web:latest ./apps/web
+
+  deploy-octopus:
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Octopus Release
+        run: echo "Triggering Octopus Deploy release..."

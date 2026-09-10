@@ -1,0 +1,7 @@
+steps:
+  - name: Deploy web via Helm
+    action: Octopus.HelmChartUpgrade
+    properties:
+      Octopus.Action.Helm.ChartDirectory: infra/k8s/web
+      Octopus.Action.Helm.ReleaseName: elara-web
+      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/web/values-#{Octopus.Environment.Name | ToLower}.yaml"

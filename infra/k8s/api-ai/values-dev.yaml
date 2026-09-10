@@ -1,0 +1,12 @@
+replicaCount: 1
+image:
+  repository: elara/api-ai
+  tag: latest
+service:
+  port: 80
+autoscaling:
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+env:
+  ENVIRONMENT: dev
