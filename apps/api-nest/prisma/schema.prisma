@@ -1,0 +1,334 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleUtilisateur {
+  admin_compte
+  utilisateur_standard
+  assistant_ia_systeme
+  integration_externe
+}
+
+enum StatutFacture {
+  brouillon
+  envoyee
+  payee
+  impayee
+  annulee
+}
+
+enum StatutCommande {
+  brouillon
+  validee
+  livree
+  annulee
+}
+
+enum SystemeComptable {
+  SYSCOHADA
+  PCG
+  IFRS
+  AUTRE
+}
+
+model Tenant {
+  id                String           @id @default(uuid())
+  raison_sociale    String
+  secteur           String?
+  pays              String?
+  ville             String?
+  devise            String?
+  statut_abonnement String?
+  systeme_comptable SystemeComptable @default(SYSCOHADA)
+  parametres        Json?            @default("{}")
+  created_at        DateTime         @default(now())
+
+  users        User[]
+  user_tenants UserTenant[]
+  clients      Client[]
+  fournisseurs Fournisseur[]
+  factures     Facture[]
+  documents    Document[]
+  produits     Produit[]
+  commandes    Commande[]
+  paiements    Paiement[]
+  depenses     Depense[]
+
+  @@map("tenants")
+}
+
+model User {
+  id                  String          @id @default(uuid())
+  tenant_id           String
+  nom                 String
+  email               String          @unique
+  role                RoleUtilisateur
+  keycloak_subject_id String?         @unique
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant       Tenant       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  user_tenants UserTenant[]
+
+  @@map("users")
+}
+
+model UserTenant {
+  user_id   String
+  tenant_id String
+  role      RoleUtilisateur
+
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@id([user_id, tenant_id])
+  @@map("user_tenants")
+}
+
+model Client {
+  id                 String  @id @default(uuid())
+  tenant_id          String
+  nom                String
+  email              String?
+  telephone          String?
+  adresse            String?
+  identifiant_fiscal String?
+  niu                String?
+  rccm               String?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant    Tenant     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  factures  Facture[]
+  commandes Commande[]
+  paiements Paiement[]
+
+  @@map("clients")
+}
+
+model Fournisseur {
+  id                 String  @id @default(uuid())
+  tenant_id          String
+  nom                String
+  email              String?
+  telephone          String?
+  adresse            String?
+  identifiant_fiscal String?
+  niu                String?
+  rccm               String?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant    Tenant     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  factures  Facture[]
+  commandes Commande[]
+  depenses  Depense[]
+
+  @@map("fournisseurs")
+}
+
+model Produit {
+  id            String  @id @default(uuid())
+  tenant_id     String
+  nom           String
+  reference     String?
+  description   String?
+  prix_unitaire Decimal @db.Decimal(10, 2)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant Tenant  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  stocks Stock[]
+
+  @@map("produits")
+}
+
+model Stock {
+  id         String  @id @default(uuid())
+  produit_id String
+  quantite   Int     @default(0)
+  entrepot   String?
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  produit Produit @relation(fields: [produit_id], references: [id], onDelete: Cascade)
+
+  @@map("stocks")
+}
+
+model Commande {
+  id             String         @id @default(uuid())
+  tenant_id      String
+  client_id      String?
+  fournisseur_id String?
+  numero         String?
+  document_id    String?
+  statut         StatutCommande @default(brouillon)
+  montant_total  Decimal        @db.Decimal(10, 2)
+  date_commande  DateTime?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant      Tenant       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  client      Client?      @relation(fields: [client_id], references: [id])
+  fournisseur Fournisseur? @relation(fields: [fournisseur_id], references: [id])
+  document    Document?    @relation(fields: [document_id], references: [id])
+  factures    Facture[]
+
+  @@map("commandes")
+}
+
+model Facture {
+  id             String        @id @default(uuid())
+  tenant_id      String
+  client_id      String?
+  fournisseur_id String?
+  commande_id    String?
+  numero         String?
+  document_id    String?
+  categorie      String?
+  montant_ht     Decimal?      @db.Decimal(10, 2)
+  taux_tva       Decimal?      @db.Decimal(5, 2)
+  montant_tva    Decimal?      @db.Decimal(10, 2)
+  montant_total  Decimal       @db.Decimal(10, 2)
+  statut         StatutFacture @default(brouillon)
+  date_emission  DateTime?
+  date_echeance  DateTime?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant      Tenant       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  client      Client?      @relation(fields: [client_id], references: [id])
+  fournisseur Fournisseur? @relation(fields: [fournisseur_id], references: [id])
+  commande    Commande?    @relation(fields: [commande_id], references: [id])
+  document    Document?    @relation(fields: [document_id], references: [id])
+  paiements   Paiement[]
+
+  @@map("factures")
+}
+
+model Paiement {
+  id            String   @id @default(uuid())
+  tenant_id     String
+  client_id     String?
+  facture_id    String?
+  montant       Decimal  @db.Decimal(10, 2)
+  date_paiement DateTime @default(now())
+  mode_paiement String? // Ex: virement, CB, chèque
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant  Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  client  Client?  @relation(fields: [client_id], references: [id])
+  facture Facture? @relation(fields: [facture_id], references: [id])
+
+  @@map("paiements")
+}
+
+model Depense {
+  id             String   @id @default(uuid())
+  tenant_id      String
+  fournisseur_id String?
+  document_id    String?
+  montant        Decimal  @db.Decimal(10, 2)
+  categorie      String?
+  date_depense   DateTime @default(now())
+  description    String?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant      Tenant       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  fournisseur Fournisseur? @relation(fields: [fournisseur_id], references: [id])
+  document    Document?    @relation(fields: [document_id], references: [id])
+
+  @@map("depenses")
+}
+
+model Document {
+  id                String  @id @default(uuid())
+  tenant_id         String
+  lien_minio        String
+  type_document     String?
+  score_confiance   Float?
+  niveau_risque     Int?    @default(0)
+  statut_validation String?
+  hash_document     String?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  factures  Facture[]
+  depenses  Depense[]
+  commandes Commande[]
+  chunks    DocumentChunk[]
+
+  @@unique([tenant_id, hash_document])
+  @@map("documents")
+}
+
+model DocumentChunk {
+  id          String                      @id @default(uuid())
+  document_id String                      @db.Uuid
+  page_number Int
+  content     String
+  embedding   Unsupported("vector(768)")?
+
+  document Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id])
+  @@map("document_chunks")
+}
+
+// L'historique des modifications alimenté par trigger SQL
+model HistoriqueModifications {
+  id         String   @id @default(uuid())
+  table_name String
+  record_id  String
+  action     String
+  old_data   Json?
+  new_data   Json?
+  changed_at DateTime @default(now())
+  changed_by String?
+
+  @@map("historique_modifications")
+}
+
+// Audit trail indépendant
+model AuditTrail {
+  id               String   @id @default(uuid())
+  tenant_id        String
+  acteur_type      String // utilisateur, systeme_ia, integration
+  acteur_id        String
+  action           String
+  entite_concernee String
+  statut           String
+  metadata         Json?
+  created_at       DateTime @default(now())
+
+  @@map("audit_trail")
+}
