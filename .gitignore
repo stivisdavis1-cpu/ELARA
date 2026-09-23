@@ -1,0 +1,72 @@
+# --- Dépendances ---
+node_modules/
+
+# --- Builds & artefacts générés ---
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.next/
+.vercel/
+
+# --- Secrets & configuration locale ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Données locales & volumes ---
+local-ged/
+tmp/
+scratch/
+uploads/
+
+# --- OCR (fichiers volumineux) ---
+*.traineddata
+
+# --- Binaires & installateurs ---
+*.exe
+
+# --- Artefacts de test manuel ---
+test.pdf
+test.docx
+test.txt
+test.json
+test-upload.js
+upload.py
+test_invoice*.pdf
+test_ocr.png
+test_real.png
+tiny.png
+**/test/data/
+
+# --- Scripts de migration ponctuels (web) ---
+apps/web/*.py
+apps/web/dump_views.js
+apps/web/views_dump.json
+
+# --- État local des outils (Supabase CLI, etc.) ---
+supabase/.temp/
+
+# --- Logs ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# --- IDE / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
