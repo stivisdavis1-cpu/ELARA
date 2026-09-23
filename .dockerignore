@@ -1,0 +1,29 @@
+# Dépendances
+**/node_modules
+**/.venv
+**/__pycache__
+**/*.pyc
+
+# Builds
+**/dist
+**/.next
+**/.turbo
+**/coverage
+
+# Secrets & environnements (jamais empaquetés)
+**/.env
+**/.env.*.local
+**/local-ged
+
+# VCS
+.git
+.gitignore
+
+# Logs & temporaires
+**/*.log
+**/tmp
+**/data
+
+# Outils locaux de l'OS
+.DS_Store
+Thumbs.db

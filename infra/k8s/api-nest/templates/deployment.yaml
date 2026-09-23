@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ .Release.Name }}-api-nest
+  labels:
+    app: api-nest
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
@@ -15,8 +17,33 @@ spec:
       containers:
         - name: api-nest
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy | default "IfNotPresent" }}
           ports:
-            - containerPort: {{ .Values.service.port }}
+            - name: http
+              containerPort: {{ .Values.service.targetPort | default .Values.service.port }}
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-api-nest-config
+            {{- if .Values.secrets.enabled }}
+            - secretRef:
+                name: {{ .Values.secrets.name }}
+            {{- end }}
+          env:
+            - name: API_AI_INTERNAL_URL
+              value: "http://{{ .Release.Name }}-api-ai:{{ .Values.apiAiPort | default 80 }}"
+            - name: PORT
+              value: {{ .Values.service.targetPort | default .Values.service.port | quote }}
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: elara-config
+  namespace: elara-prod
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  MINIO_ENDPOINT: "elara-minio-service"
+  MINIO_PORT: "9000"
+  MINIO_USE_SSL: "false"
+  MINIO_BUCKET_NAME: "elara-documents"
+  RABBITMQ_HOST: "elara-rabbitmq-service"
+  RABBITMQ_PORT: "5672"
+  NEXT_PUBLIC_API_URL: "/api"

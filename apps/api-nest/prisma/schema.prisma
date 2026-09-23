@@ -1,10 +1,13 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [vector]
 }
 
 enum RoleUtilisateur {
@@ -58,6 +61,9 @@ model Tenant {
   commandes    Commande[]
   paiements    Paiement[]
   depenses     Depense[]
+  tax_rules    TaxRule[]
+  conversations Conversation[]
+  company_memories CompanyMemory[]
 
   @@map("tenants")
 }
@@ -276,6 +282,13 @@ model Document {
   statut_validation String?
   hash_document     String?
 
+  // Archive GED (diskgroup sécurisé + index logique) — champ ajouté via
+  // ALTER TABLE idempotent sur la BDD (Supabase), lu via requêtes SQL brutes.
+  archive_path     String?
+  archive_checksum String?
+  archive_size     Int?
+  archived_at      DateTime?
+
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
@@ -293,7 +306,7 @@ model Document {
 
 model DocumentChunk {
   id          String                      @id @default(uuid())
-  document_id String                      @db.Uuid
+  document_id String
   page_number Int
   content     String
   embedding   Unsupported("vector(768)")?
@@ -331,4 +344,58 @@ model AuditTrail {
   created_at       DateTime @default(now())
 
   @@map("audit_trail")
+}
+
+// Modèles IA (Agent Fiscal & Conseiller)
+model TaxRule {
+  id                   String   @id @default(uuid())
+  tenant_id            String
+  pays                 String
+  taux_standard_tva    Decimal  @db.Decimal(5, 2)
+  cotisations_sociales Json?
+  date_verification    DateTime @default(now())
+  source               String?
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, pays])
+  @@map("tax_rules")
+}
+
+model Conversation {
+  id         String   @id @default(uuid())
+  tenant_id  String
+  titre      String?
+  created_at DateTime @default(now())
+
+  tenant   Tenant    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id              String   @id @default(uuid())
+  conversation_id String
+  role            String   // 'user' ou 'assistant'
+  content         String   @db.Text
+  created_at      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model CompanyMemory {
+  id          String                      @id @default(uuid())
+  tenant_id   String
+  content     String
+  type_info   String                      // ex: 'comportement', 'règle_métier', 'historique'
+  embedding   Unsupported("vector(768)")?
+  created_at  DateTime                    @default(now())
+
+  tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@map("company_memories")
 }

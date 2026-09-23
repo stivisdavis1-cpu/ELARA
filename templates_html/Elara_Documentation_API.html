@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"/>
+<title>Elara — Documentation API</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --navy:#1F3864; --grey:#F2F2F2; --text:#222; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:var(--text); background:#fff; }
+  #topbar { background:var(--navy); color:#fff; padding:18px 32px; }
+  #topbar strong { font-size:18px; letter-spacing:.5px; }
+  #topbar span { opacity:.85; font-size:14px; margin-left:12px; }
+  .layout { display:flex; }
+  nav { width:260px; flex-shrink:0; padding:24px 16px; border-right:1px solid #e2e2e2; height:calc(100vh - 60px); overflow-y:auto; position:sticky; top:60px; }
+  nav h3 { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:#888; margin:18px 0 6px; }
+  nav ul { list-style:none; padding:0; margin:0; }
+  nav li { margin:4px 0; }
+  nav a { color:var(--navy); text-decoration:none; font-size:14px; }
+  nav a:hover { text-decoration:underline; }
+  main { padding:24px 40px 80px; max-width:920px; }
+  h1 { color:var(--navy); font-size:26px; margin-bottom:4px; }
+  h2 { color:var(--navy); border-bottom:2px solid var(--navy); padding-bottom:6px; margin-top:48px; }
+  .tag-desc { color:#555; font-size:14px; }
+  .intro p { font-size:14px; line-height:1.6; color:#333; }
+  .intro ul { font-size:14px; line-height:1.6; }
+  .endpoint { border:1px solid #e2e2e2; border-radius:6px; padding:16px 20px; margin:18px 0; background:#fafafa; }
+  .endpoint-head { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  .method { color:#fff; font-size:12px; font-weight:bold; padding:3px 9px; border-radius:4px; letter-spacing:.5px; }
+  .path { font-size:15px; font-family: SFMono-Regular, Consolas, monospace; }
+  .summary { font-weight:600; margin:6px 0 2px; }
+  .desc { font-size:13.5px; color:#444; margin:2px 0 10px; }
+  .subhead { font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:#888; margin-top:14px; margin-bottom:4px; }
+  table.ptable { width:100%; border-collapse:collapse; font-size:13px; margin-bottom:4px; }
+  table.ptable th { background:var(--grey); text-align:left; padding:6px 8px; font-size:11.5px; text-transform:uppercase; color:#555; }
+  table.ptable td { padding:6px 8px; border-bottom:1px solid #ececec; vertical-align:top; }
+  code { background:#eef0f3; padding:1px 5px; border-radius:3px; font-size:12.5px; }
+  footer { text-align:center; font-size:12px; color:#999; padding:20px; }
+</style>
+</head>
+<body>
+  <div id="topbar"><strong>ELARA</strong><span>Documentation API — Intégrations entrantes / sortantes</span></div>
+  <div class="layout">
+    <nav>
+      <h3>Sections</h3>
+      <ul>
+        <li><a href="#intro">Introduction</a></li>
+        <li><a href="#tag-authentification">Authentification</a></li><li><a href="#tag-api-entrantes">API entrantes</a></li><li><a href="#tag-api-sortantes">API sortantes</a></li><li><a href="#tag-webhooks">Webhooks</a></li><li><a href="#tag-gouvernance-etamp;-audit">Gouvernance &amp; audit</a></li><li><a href="#schemas">Schémas de données</a></li>
+      </ul>
+    </nav>
+    <main>
+      <h1>Elara — API d&#x27;intégration (entrantes / sortantes)</h1>
+      <p style="color:#888;font-size:13px;">Version 1.0.0 · OpenAPI 3.0.3</p>
+
+      <div id="intro" class="intro">
+        <p>API d&#x27;intégration multi-tenant d&#x27;Elara, permettant de connecter la Business Memory d&#x27;une entreprise aux systèmes déjà utilisés (comptabilité, banques, Mobile Money, ERP, CRM, WhatsApp Business, email) sans exiger leur remplacement.<br/><br/><strong>Principes structurants</strong> - Chaque requête est scopée à un tenant unique (`tenant_id` porté par le jeton d&#x27;accès ou la clé API). - Toute action *sortante* à impact financier ou client requiert une validation humaine   explicite dans Elara avant exécution (voir `statut: en_attente_validation`). - Chaque appel entrant ou sortant est journalisé dans l&#x27;audit trail du tenant. - Toutes les routes sont versionnées (`/v1`) afin de garantir la compatibilité ascendante   des connecteurs existants lors de futures évolutions. - Les endpoints sont soumis à une limitation de débit par tenant et par intégration   (voir en-têtes `X-RateLimit-*`). </p>
+        <h3>Serveurs</h3>
+        <ul><li><code>https://api.elara.app/v1</code> — Production</li><li><code>https://sandbox-api.elara.app/v1</code> — Bac à sable (sandbox) — données de test, sans impact réel</li></ul>
+        <h3>Authentification</h3>
+        <ul><li><strong>OAuth2</strong> — OAuth2 (client credentials), token via <code>POST /oauth/token</code></li><li><strong>ApiKeyAuth</strong> — Clé API dans l'en-tête <code>X-Api-Key</code></li></ul>
+      </div>
+
+      <h2 id="tag-authentification">Authentification</h2>
+<div class="endpoint" id="tag-authentification-post--oauth-token">
+<div class="endpoint-head"><span class="method" style="background:#1565c0">POST</span><code class="path">/oauth/token</code></div>
+<p class="summary">Obtenir un jeton d&#x27;accès (client credentials)</p>
+<div class="subhead">Corps de la requête</div>
+<table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>grant_type</code></td><td>string — enum: client_credentials</td><td> *(requis)*</td></tr>
+<tr><td><code>client_id</code></td><td>string</td><td> *(requis)*</td></tr>
+<tr><td><code>client_secret</code></td><td>string</td><td> *(requis)*</td></tr>
+<tr><td><code>scope</code></td><td>string</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Jeton émis</td><td><code>access_token</code>, <code>token_type</code>, <code>expires_in</code>, <code>tenant_id</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div><h2 id="tag-api-entrantes">API entrantes</h2>
+<p class="tag-desc">Récupération, par Elara, des données produites par les systèmes déjà utilisés par l&#x27;entreprise.</p>
+<div class="endpoint" id="tag-api-entrantes-get--entrantes-comptabilite-ecritures">
+<div class="endpoint-head"><span class="method" style="background:#2e7d32">GET</span><code class="path">/entrantes/comptabilite/ecritures</code></div>
+<p class="summary">Récupérer les écritures comptables</p>
+<p class="desc">Extraits comptables et écritures issus du logiciel de comptabilité, intégrés à la Business Memory.</p>
+<div class="subhead">Paramètres</div>
+<table class="ptable"><tr><th>Nom</th><th>Emplacement</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>depuis_le</code></td><td>query</td><td>string</td><td>Ne renvoyer que les enregistrements créés ou modifiés après cette date (ISO 8601).</td></tr>
+<tr><td><code>page</code></td><td>query</td><td>integer</td><td></td></tr>
+<tr><td><code>taille_page</code></td><td>query</td><td>integer</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Liste paginée d&#x27;écritures comptables</td><td><code>page</code>, <code>taille_page</code>, <code>total</code>, <code>donnees</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+<tr><td><strong>429</strong></td><td>Limitation de débit atteinte pour ce tenant / cette intégration</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-entrantes-get--entrantes-banques-transactions">
+<div class="endpoint-head"><span class="method" style="background:#2e7d32">GET</span><code class="path">/entrantes/banques/transactions</code></div>
+<p class="summary">Récupérer les transactions bancaires et Mobile Money</p>
+<p class="desc">Transactions, soldes et relevés issus des banques et du Mobile Money.</p>
+<div class="subhead">Paramètres</div>
+<table class="ptable"><tr><th>Nom</th><th>Emplacement</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>depuis_le</code></td><td>query</td><td>string</td><td>Ne renvoyer que les enregistrements créés ou modifiés après cette date (ISO 8601).</td></tr>
+<tr><td><code>source</code></td><td>query</td><td>string</td><td></td></tr>
+<tr><td><code>page</code></td><td>query</td><td>integer</td><td></td></tr>
+<tr><td><code>taille_page</code></td><td>query</td><td>integer</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Liste paginée de transactions</td><td><code>page</code>, <code>taille_page</code>, <code>total</code>, <code>donnees</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-entrantes-get--entrantes-erp-commandes">
+<div class="endpoint-head"><span class="method" style="background:#2e7d32">GET</span><code class="path">/entrantes/erp/commandes</code></div>
+<p class="summary">Récupérer les commandes, mouvements de stock et fiches produits</p>
+<div class="subhead">Paramètres</div>
+<table class="ptable"><tr><th>Nom</th><th>Emplacement</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>depuis_le</code></td><td>query</td><td>string</td><td>Ne renvoyer que les enregistrements créés ou modifiés après cette date (ISO 8601).</td></tr>
+<tr><td><code>page</code></td><td>query</td><td>integer</td><td></td></tr>
+<tr><td><code>taille_page</code></td><td>query</td><td>integer</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Liste paginée de commandes</td><td><code>page</code>, <code>taille_page</code>, <code>total</code>, <code>donnees</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-entrantes-get--entrantes-crm-contacts">
+<div class="endpoint-head"><span class="method" style="background:#2e7d32">GET</span><code class="path">/entrantes/crm/contacts</code></div>
+<p class="summary">Récupérer les contacts et opportunités du CRM</p>
+<div class="subhead">Paramètres</div>
+<table class="ptable"><tr><th>Nom</th><th>Emplacement</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>page</code></td><td>query</td><td>integer</td><td></td></tr>
+<tr><td><code>taille_page</code></td><td>query</td><td>integer</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Liste paginée de contacts</td><td><code>page</code>, <code>taille_page</code>, <code>total</code>, <code>donnees</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div><h2 id="tag-api-sortantes">API sortantes</h2>
+<p class="tag-desc">Actions déclenchées par Elara sur les systèmes existants de l&#x27;entreprise, avec validation humaine pour les actions sensibles.</p>
+<div class="endpoint" id="tag-api-sortantes-post--sortantes-factures">
+<div class="endpoint-head"><span class="method" style="background:#1565c0">POST</span><code class="path">/sortantes/factures</code></div>
+<p class="summary">Créer ou mettre à jour une facture dans le logiciel de comptabilité</p>
+<p class="desc">Action sensible : soumise à validation humaine explicite dans Elara avant exécution.<br/>La réponse initiale renvoie `en_attente_validation` ; le statut final est communiqué<br/>par webhook (`facture.validee` / `facture.rejetee`) ou par consultation du statut.<br/></p>
+<div class="subhead">Corps de la requête</div>
+<table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>commande_id</code></td><td>string (uuid)</td><td></td></tr>
+<tr><td><code>client_id</code></td><td>string (uuid)</td><td> *(requis)*</td></tr>
+<tr><td><code>lignes</code></td><td>array<object></td><td> *(requis)*</td></tr>
+<tr><td><code>devise</code></td><td>string</td><td></td></tr>
+<tr><td><code>date_echeance</code></td><td>string (date)</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>202</strong></td><td>Demande acceptée, en attente de validation humaine</td><td><code>id</code>, <code>type</code>, <code>statut</code>, <code>cree_le</code>, <code>valide_par</code>, <code>valide_le</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+<tr><td><strong>422</strong></td><td>Données invalides</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-sortantes-get--sortantes-factures-id">
+<div class="endpoint-head"><span class="method" style="background:#2e7d32">GET</span><code class="path">/sortantes/factures/{id}</code></div>
+<p class="summary">Consulter le statut d&#x27;une action de facturation</p>
+<div class="subhead">Paramètres</div>
+<table class="ptable"><tr><th>Nom</th><th>Emplacement</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>id</code></td><td>path</td><td>string</td><td>Identifiant de l&#x27;action sortante (renvoyé à la création).</td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Statut courant de l&#x27;action</td><td><code>id</code>, <code>type</code>, <code>statut</code>, <code>cree_le</code>, <code>valide_par</code>, <code>valide_le</code></td></tr>
+<tr><td><strong>404</strong></td><td>Ressource introuvable</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-sortantes-patch--sortantes-commandes-id-statut">
+<div class="endpoint-head"><span class="method" style="background:#6a1b9a">PATCH</span><code class="path">/sortantes/commandes/{id}/statut</code></div>
+<p class="summary">Mettre à jour le statut d&#x27;une commande ou un niveau de stock dans l&#x27;ERP</p>
+<div class="subhead">Paramètres</div>
+<table class="ptable"><tr><th>Nom</th><th>Emplacement</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>id</code></td><td>path</td><td>string</td><td></td></tr>
+</table>
+<div class="subhead">Corps de la requête</div>
+<table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>statut</code></td><td>string — enum: en_attente, confirmee, expediee, livree, annulee</td><td> *(requis)*</td></tr>
+<tr><td><code>niveau_stock</code></td><td>integer</td><td>Optionnel — nouveau niveau de stock associé au produit concerné.</td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Statut mis à jour</td><td><code>id</code>, <code>client_id</code>, <code>statut</code>, <code>lignes</code>, <code>cree_le</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+<tr><td><strong>404</strong></td><td>Ressource introuvable</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-sortantes-post--sortantes-crm-contacts">
+<div class="endpoint-head"><span class="method" style="background:#1565c0">POST</span><code class="path">/sortantes/crm/contacts</code></div>
+<p class="summary">Créer ou mettre à jour un contact ou une opportunité dans le CRM</p>
+<div class="subhead">Corps de la requête</div>
+<table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>id</code></td><td>string (uuid)</td><td></td></tr>
+<tr><td><code>nom</code></td><td>string</td><td></td></tr>
+<tr><td><code>entreprise</code></td><td>string</td><td></td></tr>
+<tr><td><code>email</code></td><td>string (email)</td><td></td></tr>
+<tr><td><code>telephone</code></td><td>string</td><td></td></tr>
+<tr><td><code>etape_pipeline</code></td><td>string</td><td></td></tr>
+<tr><td><code>montant_estime</code></td><td>number (double)</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Contact créé ou mis à jour (synchronisation bidirectionnelle)</td><td><code>id</code>, <code>nom</code>, <code>entreprise</code>, <code>email</code>, <code>telephone</code>, <code>etape_pipeline</code>, <code>montant_estime</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-sortantes-post--sortantes-relances">
+<div class="endpoint-head"><span class="method" style="background:#1565c0">POST</span><code class="path">/sortantes/relances</code></div>
+<p class="summary">Envoyer un message de relance via WhatsApp ou email</p>
+<p class="desc">Action sensible côté client — soumise à validation humaine avant envoi effectif.</p>
+<div class="subhead">Corps de la requête</div>
+<table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>contact_id</code></td><td>string (uuid)</td><td> *(requis)*</td></tr>
+<tr><td><code>canal</code></td><td>string — enum: whatsapp, email</td><td> *(requis)*</td></tr>
+<tr><td><code>contenu</code></td><td>string</td><td> *(requis)*</td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>202</strong></td><td>Demande de relance acceptée, en attente de validation humaine</td><td><code>id</code>, <code>type</code>, <code>statut</code>, <code>cree_le</code>, <code>valide_par</code>, <code>valide_le</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+<div class="endpoint" id="tag-api-sortantes-post--sortantes-paiements">
+<div class="endpoint-head"><span class="method" style="background:#1565c0">POST</span><code class="path">/sortantes/paiements</code></div>
+<p class="summary">Déclencher un virement ou un paiement Mobile Money</p>
+<p class="desc">Action financière sensible. Ne peut jamais être exécutée automatiquement :<br/>validation humaine explicite obligatoire dans Elara avant tout déclenchement réel.<br/></p>
+<div class="subhead">Corps de la requête</div>
+<table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>beneficiaire</code></td><td>string</td><td> *(requis)*</td></tr>
+<tr><td><code>montant</code></td><td>number (double)</td><td> *(requis)*</td></tr>
+<tr><td><code>devise</code></td><td>string</td><td></td></tr>
+<tr><td><code>methode</code></td><td>string — enum: virement, mobile_money</td><td> *(requis)*</td></tr>
+<tr><td><code>reference_facture_id</code></td><td>string (uuid)</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>202</strong></td><td>Demande de paiement enregistrée, en attente de validation humaine</td><td><code>id</code>, <code>type</code>, <code>statut</code>, <code>cree_le</code>, <code>valide_par</code>, <code>valide_le</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+<tr><td><strong>422</strong></td><td>Données invalides</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div><h2 id="tag-webhooks">Webhooks</h2>
+<div class="endpoint" id="tag-webhooks-post--webhooks">
+<div class="endpoint-head"><span class="method" style="background:#1565c0">POST</span><code class="path">/webhooks</code></div>
+<p class="summary">Enregistrer une URL de notification (webhook)</p>
+<div class="subhead">Corps de la requête</div>
+<table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>url</code></td><td>string (uri)</td><td> *(requis)*</td></tr>
+<tr><td><code>evenements</code></td><td>array<string></td><td> *(requis)*</td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>201</strong></td><td>Webhook enregistré</td><td><code>id</code>, <code>url</code>, <code>evenements</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div><h2 id="tag-gouvernance-etamp;-audit">Gouvernance &amp; audit</h2>
+<div class="endpoint" id="tag-gouvernance-etamp;-audit-get--audit-evenements">
+<div class="endpoint-head"><span class="method" style="background:#2e7d32">GET</span><code class="path">/audit/evenements</code></div>
+<p class="summary">Consulter le journal d&#x27;audit des appels API du tenant</p>
+<div class="subhead">Paramètres</div>
+<table class="ptable"><tr><th>Nom</th><th>Emplacement</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>depuis_le</code></td><td>query</td><td>string</td><td>Ne renvoyer que les enregistrements créés ou modifiés après cette date (ISO 8601).</td></tr>
+<tr><td><code>page</code></td><td>query</td><td>integer</td><td></td></tr>
+<tr><td><code>taille_page</code></td><td>query</td><td>integer</td><td></td></tr>
+</table>
+<div class="subhead">Réponses</div>
+<table class="ptable"><tr><th>Code</th><th>Description</th><th>Champs principaux</th></tr>
+<tr><td><strong>200</strong></td><td>Journal paginé des appels API entrants et sortants</td><td><code>page</code>, <code>taille_page</code>, <code>total</code>, <code>donnees</code></td></tr>
+<tr><td><strong>401</strong></td><td>Authentification manquante ou invalide</td><td><code>code</code>, <code>message</code>, <code>details</code></td></tr>
+</table>
+</div>
+      <h2 id="schemas">Schémas de données</h2><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">EvenementAudit</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>horodatage</code></td><td>string (date-time)</td><td></td></tr><tr><td><code>type</code></td><td>string</td><td></td></tr><tr><td><code>acteur</code></td><td>string</td><td></td></tr><tr><td><code>tenant_id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>details</code></td><td>object</td><td></td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">EcritureComptable</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>date</code></td><td>string (date)</td><td></td></tr><tr><td><code>libelle</code></td><td>string</td><td></td></tr><tr><td><code>compte</code></td><td>string</td><td></td></tr><tr><td><code>debit</code></td><td>number (double)</td><td></td></tr><tr><td><code>credit</code></td><td>number (double)</td><td></td></tr><tr><td><code>devise</code></td><td>string</td><td></td></tr><tr><td><code>piece_jointe_id</code></td><td>string (uuid)</td><td></td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">Transaction</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>source</code></td><td>string — enum: banque, mobile_money</td><td></td></tr><tr><td><code>date</code></td><td>string (date-time)</td><td></td></tr><tr><td><code>montant</code></td><td>number (double)</td><td></td></tr><tr><td><code>devise</code></td><td>string</td><td></td></tr><tr><td><code>reference</code></td><td>string</td><td></td></tr><tr><td><code>rapproche</code></td><td>boolean</td><td>Indique si la transaction a été rapprochée d&#x27;une commande ou facture.</td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">Commande</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>client_id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>statut</code></td><td>string — enum: en_attente, confirmee, expediee, livree, annulee</td><td></td></tr><tr><td><code>lignes</code></td><td>array<object></td><td></td></tr><tr><td><code>cree_le</code></td><td>string (date-time)</td><td></td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">Contact</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>nom</code></td><td>string</td><td></td></tr><tr><td><code>entreprise</code></td><td>string</td><td></td></tr><tr><td><code>email</code></td><td>string (email)</td><td></td></tr><tr><td><code>telephone</code></td><td>string</td><td></td></tr><tr><td><code>etape_pipeline</code></td><td>string</td><td></td></tr><tr><td><code>montant_estime</code></td><td>number (double)</td><td></td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">DemandeFacture</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>commande_id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>client_id</code></td><td>string (uuid)</td><td> *(requis)*</td></tr><tr><td><code>lignes</code></td><td>array<object></td><td> *(requis)*</td></tr><tr><td><code>devise</code></td><td>string</td><td></td></tr><tr><td><code>date_echeance</code></td><td>string (date)</td><td></td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">DemandeRelance</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>contact_id</code></td><td>string (uuid)</td><td> *(requis)*</td></tr><tr><td><code>canal</code></td><td>string — enum: whatsapp, email</td><td> *(requis)*</td></tr><tr><td><code>contenu</code></td><td>string</td><td> *(requis)*</td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">DemandePaiement</code></div><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>beneficiaire</code></td><td>string</td><td> *(requis)*</td></tr><tr><td><code>montant</code></td><td>number (double)</td><td> *(requis)*</td></tr><tr><td><code>devise</code></td><td>string</td><td></td></tr><tr><td><code>methode</code></td><td>string — enum: virement, mobile_money</td><td> *(requis)*</td></tr><tr><td><code>reference_facture_id</code></td><td>string (uuid)</td><td></td></tr></table></div><div class="endpoint"><div class="endpoint-head"><span class="method" style="background:#1F3864">SCHEMA</span><code class="path">ActionSortante</code></div><p class="desc">Enveloppe commune à toute action sortante soumise à validation humaine.</p><table class="ptable"><tr><th>Champ</th><th>Type</th><th>Description</th></tr><tr><td><code>id</code></td><td>string (uuid)</td><td></td></tr><tr><td><code>type</code></td><td>string</td><td></td></tr><tr><td><code>statut</code></td><td>string — enum: en_attente_validation, validee, rejetee, executee</td><td></td></tr><tr><td><code>cree_le</code></td><td>string (date-time)</td><td></td></tr><tr><td><code>valide_par</code></td><td>string</td><td>Utilisateur Elara ayant validé ou rejeté l&#x27;action.</td></tr><tr><td><code>valide_le</code></td><td>string (date-time)</td><td></td></tr></table></div>
+
+      <footer>Elara — Documentation API confidentielle · Générée depuis la spécification OpenAPI (elara_openapi.yaml)</footer>
+    </main>
+  </div>
+</body>
+</html>

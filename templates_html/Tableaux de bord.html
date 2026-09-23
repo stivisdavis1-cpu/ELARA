@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Elara — Design System 2.0</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{
+  --ink:#0E2A22;
+  --ink-2:#123A2F;
+  --ink-3:#1A4A3C;
+  --paper:#F6F4EE;
+  --paper-2:#FFFFFF;
+  --paper-card: color-mix(in srgb, var(--paper-2) 92%, transparent);
+  --line:#E2DFD1;
+  --line-soft:#ECE9DD;
+  --line-active: color-mix(in srgb, var(--teal) 40%, transparent);
+  --text:#1B1B15;
+  --text-dim:#6B6858;
+  --text-faint:#9C9986;
+  --teal:#A9761F;
+  --teal-deep:#7C5714;
+  --teal-glow: color-mix(in srgb, var(--teal) 16%, transparent);
+  --indigo:#1A4A3C;
+  --indigo-deep:#0E2A22;
+  --amber:#C06A2C;
+  --amber-bg:#F3E2D2;
+  --red:#A23B3B;
+  --red-bg:#F3E2DF;
+  --green:#2F7A4D;
+  --green-bright:#30A462;
+  --green-bg:#E3EFE6;
+  --blue-bg:#E7EAE4;
+  --gold-bg:#F1E4C4;
+  --radius:9px;
+  --radius-lg:14px;
+  --shadow-ai: 0 1px 2px rgba(14,42,34,.05), 0 10px 26px -14px rgba(169,118,31,.30);
+  --shadow-subtle: 0 1px 3px rgba(14,42,34,0.03), 0 12px 28px -10px color-mix(in srgb, var(--ink) 8%, transparent);
+
+  /* Typographie : Titres Tahoma & Corps Gill Sans MT */
+  --font-body: "Gill Sans MT", "Gill Sans", Calibri, "Trebuchet MS", sans-serif;
+  --font-heading: Tahoma, "Trebuchet MS", sans-serif;
+}
+
+/* Hyper-responsivité : écrans 64 pouces & moniteurs 4K */
+@media (min-width: 2200px) {
+  :root {
+    --radius-lg: 20px;
+  }
+  body { font-size: 16px !important; }
+}
+
+*,*::before,*::after{box-sizing:border-box;}
+html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden;}
+body{
+  font-family:var(--font-body);
+  background:var(--paper);
+  color:var(--text);
+  line-height:1.52;
+  font-size: clamp(13px, 0.95vw, 14.5px);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* Grille de fond ambiante futuriste / bancaire */
+.app-backdrop {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background: 
+    radial-gradient(circle at 85% 10%, color-mix(in srgb, var(--teal) 6%, transparent) 0%, transparent 45%),
+    radial-gradient(circle at 10% 90%, color-mix(in srgb, var(--indigo) 6%, transparent) 0%, transparent 40%),
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 48px 48px, 48px 48px;
+  opacity: 0.65;
+}
+
+h1,h2,h3,.display{
+  font-family:var(--font-heading);
+  font-weight:700;
+  color:var(--ink);
+  letter-spacing:-0.02em;
+}
+::selection{background:rgba(169,118,31,.25);}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:268px 1fr;min-height:100vh;position:relative;z-index:1;}
+.sidebar{
+  background:linear-gradient(185deg,var(--ink) 0%, var(--ink-2) 100%);
+  color:#fff;
+  padding:22px 16px;
+  display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;
+  border-right:1px solid #000;
+  backdrop-filter: blur(14px);
+}
+.brand{display:flex;align-items:center;gap:10px;padding:6px 8px 18px 8px;}
+.brand svg{flex-shrink:0;}
+.brand-word{font-family:var(--font-heading);font-weight:700;font-size:18.5px;letter-spacing:-.02em;color:#fff;}
+.brand-tag{font-size:10px;color:#8C9186;margin-top:-2px;letter-spacing:.02em;}
+
+/* Badge Supabase / Vercel Edge Runtime */
+.env-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:10.5px;font-weight:700;color:var(--green-bright);
+  background:rgba(48,164,98,0.12);
+  border:1px solid rgba(48,164,98,0.28);
+  padding:3px 8px;border-radius:20px;margin-left:auto;
+}
+.pulse-dot{width:6px;height:6px;border-radius:50%;background:var(--green-bright);box-shadow:0 0 0 0 rgba(48,164,98,0.6);animation:pulseDot 2s infinite;}
+@keyframes pulseDot{70%,100%{box-shadow:0 0 0 6px rgba(48,164,98,0);}}
+
+nav.nav{display:flex;flex-direction:column;gap:2px;margin-top:6px;overflow-y:auto;padding-right:4px;}
+nav.nav::-webkit-scrollbar{width:3px;}
+nav.nav::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:10px;}
+
+.nav a{
+  display:flex;align-items:center;gap:11px;
+  padding:8.5px 12px 8.5px 13px;border-radius:8px;
+  color:#ADB3A4;text-decoration:none;font-size:13px;font-weight:600;
+  cursor:pointer;transition:background .15s ease,color .15s ease,border-color .15s ease;
+  border:1px solid transparent;border-left:2px solid transparent;
+}
+.nav a svg{opacity:.75;flex-shrink:0;transition:opacity .15s ease;}
+.nav a:hover{background:rgba(255,255,255,.05);color:#fff;}
+.nav a:hover svg{opacity:1;}
+.nav a.active{
+  background:rgba(169,118,31,.11);
+  color:#fff;
+  border-color:rgba(169,118,31,.22);
+  border-left:2px solid var(--teal);
+  padding-left:11px;
+}
+.nav a.active svg{opacity:1;color:var(--teal);}
+.nav a:focus-visible{outline:1.5px solid var(--teal);outline-offset:1px;}
+.nav-section{font-family:var(--font-heading);font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:#5D6357;padding:14px 12px 5px;font-weight:700;}
+.sidebar-foot{
+  margin-top:auto;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);
+}
+.tenant-card{
+  display:flex;align-items:center;gap:10px;
+  padding:10px;border-radius:10px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,0.06);
+}
+.tenant-avatar{
+  width:34px;height:34px;border-radius:9px;
+  background:linear-gradient(135deg,var(--teal),var(--indigo));
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-heading);font-weight:700;font-size:12.5px;color:#fff;flex-shrink:0;
+}
+.tenant-name{font-size:12.5px;font-weight:700;color:#fff;}
+.tenant-meta{font-size:10.5px;color:#8C9186;}
+
+main.canvas{
+  padding:clamp(22px, 3vh, 36px) clamp(24px, 3.5vw, 44px) 60px;
+  max-width:1440px;width:100%;
+}
+.topbar{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:26px;gap:20px;flex-wrap:wrap;}
+.eyebrow{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-faint);font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;font-family:var(--font-heading);}
+.page-title{font-size:clamp(22px, 2.3vw, 30px);font-weight:700;letter-spacing:-.02em;margin:0 0 6px;}
+.page-sub{color:var(--text-dim);font-size:13.5px;margin:0;max-width:580px;}
+.topbar-actions{display:flex;gap:10px;flex-shrink:0;}
+.btn{
+  font-family:var(--font-heading);font-size:12px;font-weight:700;
+  padding:9px 16px;border-radius:8px;cursor:pointer;border:1px solid transparent;
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  transition:transform .1s ease,box-shadow .15s ease,filter .15s ease;
+}
+.btn-primary{background:var(--ink);color:#fff;}
+.btn-primary.teal{background:linear-gradient(135deg,var(--teal),var(--teal-deep));box-shadow:0 4px 12px -6px rgba(169,118,31,.55);color:#fff;}
+.btn-primary:hover{filter:brightness(1.06);}
+.btn-primary:active{transform:translateY(1px);}
+.btn-ghost{background:#fff;color:var(--text);border-color:var(--line);}
+.btn-ghost:hover{border-color:var(--text-faint);}
+.btn:focus-visible{outline:2px solid var(--teal);outline-offset:1px;}
+.wave-rule{width:46px;height:14px;opacity:.55;}
+
+/* Bouton Simulateur Supabase Realtime */
+.btn-live-stream{
+  background:color-mix(in srgb, var(--green-bright) 12%, transparent);
+  color:var(--green);
+  border:1px solid color-mix(in srgb, var(--green-bright) 30%, transparent);
+  font-size:11px;padding:6px 12px;border-radius:999px;
+  display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  font-family:var(--font-heading);font-weight:700;
+}
+.btn-live-stream:hover{background:color-mix(in srgb, var(--green-bright) 20%, transparent);}
+
+/* ---------- Grilles & Cartes avec effet Spotlight interactif ---------- */
+.grid{display:grid;gap:16px;}
+.g4{grid-template-columns:repeat(4,1fr);}
+.g3{grid-template-columns:repeat(3,1fr);}
+.g2{grid-template-columns:1.5fr 1fr;}
+.g2e{grid-template-columns:1fr 1fr;}
+@media(max-width:1100px){.g4{grid-template-columns:repeat(2,1fr);} .g2{grid-template-columns:1fr;}}
+
+.card{
+  position:relative;
+  background:var(--paper-card);
+  border:1px solid var(--line);
+  border-radius:var(--radius-lg);
+  padding:20px 22px;
+  box-shadow:var(--shadow-subtle);
+  max-width:100%;
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  transition:border-color .2s ease, box-shadow .2s ease;
+  overflow:hidden;
+}
+
+/* Micro-Spotlight au survol du curseur */
+.card::before {
+  content: '';
+  position: absolute;
+  top: var(--mouse-y, 50%);
+  left: var(--mouse-x, 50%);
+  width: 260px; height: 260px;
+  background: radial-gradient(circle, rgba(169,118,31,0.09) 0%, transparent 70%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.card:hover::before { opacity: 1; }
+.card:hover{ border-color: color-mix(in srgb, var(--teal) 40%, transparent); }
+
+.card-flat{background:transparent;border:none;padding:0;box-shadow:none;}
+
+.kpi-label{font-family:var(--font-heading);font-size:11px;color:var(--text-dim);font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:0.04em;}
+.kpi-value{font-family:var(--font-heading);font-size:clamp(21px, 2vw, 27px);font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;}
+.kpi-delta{font-size:11.5px;font-weight:700;margin-top:8px;display:flex;align-items:center;gap:4px;}
+.up{color:var(--green);} .down{color:var(--red);} .flat{color:var(--text-faint);}
+
+.ai-card{
+  position:relative;
+  background:var(--paper-2);
+  border:1px solid var(--line);
+  border-radius:var(--radius-lg);
+  padding:23px 22px 20px;
+  box-shadow:var(--shadow-ai);
+}
+.ai-card::before{
+  content:'';position:absolute;top:-1px;left:20px;width:34px;height:3px;
+  background:var(--teal);border-radius:0 0 3px 3px;
+}
+.ai-badge{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:11px;font-weight:700;color:var(--ink);letter-spacing:.03em;
+  text-transform:uppercase;font-family:var(--font-heading);
+  background:transparent;padding:0;border-radius:0;
+  margin-bottom:12px;
+}
+.ai-badge svg{
+  width:14px;height:14px;padding:5px;flex-shrink:0;box-sizing:content-box;
+  border-radius:50%;border:1.5px dashed var(--teal);
+  background:var(--gold-bg);color:var(--teal-deep);
+}
+
+.section-title{font-family:var(--font-heading);font-size:14.5px;font-weight:700;margin:0 0 3px;}
+.section-sub{font-size:12px;color:var(--text-dim);margin:0 0 16px;}
+
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3.5px 9px;border-radius:20px;font-family:var(--font-heading);}
+.pill-success{background:var(--green-bg);color:var(--green);}
+.pill-warning{background:var(--amber-bg);color:var(--amber);}
+.pill-danger{background:var(--red-bg);color:var(--red);}
+.pill-info{background:var(--blue-bg);color:var(--indigo-deep);}
+.pill-neutral{background:var(--paper);color:var(--text-dim);border:1px solid var(--line);}
+
+table.tbl{width:100%;border-collapse:collapse;font-size:13px;}
+table.tbl thead th{
+  text-align:left;font-size:11px;color:var(--text-faint);font-weight:700;
+  text-transform:uppercase;letter-spacing:0.04em;font-family:var(--font-heading);
+  padding:0 10px 10px;border-bottom:1px solid var(--line);
+}
+table.tbl tbody td{padding:12px 10px;border-bottom:1px solid var(--line-soft);}
+table.tbl tbody tr:last-child td{border-bottom:none;}
+table.tbl tbody tr:hover{background:rgba(169,118,31,0.04);}
+.name-cell{font-weight:700;}
+.mono{font-variant-numeric:tabular-nums;font-weight:600;}
+
+.progress{height:6px;border-radius:20px;background:var(--line-soft);overflow:hidden;}
+.progress > div{height:100%;border-radius:20px;transition:width 0.8s cubic-bezier(0.16,1,0.3,1);}
+
+.ring{position:relative;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.ring::before{content:'';position:absolute;inset:7px;background:#fff;border-radius:50%;}
+.ring-val{position:relative;font-family:var(--font-heading);font-weight:700;font-size:20px;}
+.ring-sub{position:relative;font-size:9px;color:var(--text-faint);margin-top:-2px;}
+
+.divider{height:1px;background:var(--line-soft);margin:16px 0;}
+
+.list-row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--line-soft);}
+.list-row:last-child{border-bottom:none;}
+
+.tag-icon{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+
+/* chat */
+.chat-wrap{display:flex;flex-direction:column;gap:16px;}
+.msg-user{align-self:flex-end;background:var(--ink);color:#fff;padding:11px 16px;border-radius:14px 14px 3px 14px;font-size:13px;max-width:64%;}
+.msg-ai{align-self:flex-start;display:flex;gap:12px;max-width:74%;}
+.msg-ai .bubble{background:#fff;border:1px solid var(--line);border-radius:3px 14px 14px 14px;padding:15px 17px;font-size:13px;line-height:1.55;}
+.avatar-ai{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--indigo),var(--teal));flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+.chip{font-size:11px;font-weight:700;background:var(--blue-bg);color:var(--indigo-deep);padding:5px 11px;border-radius:20px;font-family:var(--font-heading);}
+
+/* phone mock */
+.phone{width:340px;background:var(--ink);border-radius:42px;padding:12px;box-shadow:0 30px 60px -20px rgba(10,15,28,.35);}
+.phone-screen{background:var(--paper);border-radius:32px;overflow:hidden;display:flex;flex-direction:column;height:660px;}
+.phone-status{display:flex;justify-content:space-between;padding:16px 24px 8px;font-size:11.5px;font-weight:700;color:var(--text-dim);font-family:var(--font-heading);}
+.phone-body{padding:6px 20px 20px;}
+.tabbar{display:flex;justify-content:space-around;padding:12px 0;border-top:1px solid var(--line);background:#fff;}
+.tab-item{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:9.5px;font-weight:700;color:var(--text-faint);font-family:var(--font-heading);}
+.tab-item.active{color:var(--teal-deep);}
+
+/* onboarding */
+.onb-wrap{max-width:640px;margin:0 auto;}
+.steps{display:flex;gap:6px;margin-bottom:28px;}
+.step-seg{flex:1;height:4px;border-radius:20px;background:var(--line);}
+.step-seg.done{background:linear-gradient(90deg,var(--teal),var(--indigo));}
+.step-seg.current{background:var(--indigo);}
+.field-label{font-family:var(--font-heading);font-size:12.5px;font-weight:700;margin:16px 0 7px;}
+.field{width:100%;padding:11px 13px;border:1.5px solid var(--line);border-radius:9px;font-size:13.5px;font-family:var(--font-body);background:#fff;transition:border-color .15s ease,box-shadow .15s ease;}
+.field:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(169,118,31,.14);}
+.opt-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+.opt{padding:12px;border:1.5px solid var(--line);border-radius:10px;text-align:center;font-size:13px;font-weight:700;color:var(--text-dim);cursor:pointer;font-family:var(--font-heading);}
+.opt.sel{border-color:var(--indigo);color:var(--indigo-deep);background:var(--blue-bg);}
+
+/* logo sheet */
+.logo-hero{background:var(--ink);border-radius:22px;padding:52px 44px;display:flex;align-items:center;justify-content:center;}
+.brand-lg{display:flex;align-items:center;gap:18px;}
+.brand-lg .word{font-family:var(--font-heading);font-weight:700;font-size:40px;color:#fff;letter-spacing:-.02em;}
+.brand-lg .tagline{font-size:13.5px;color:#8C9186;margin-top:2px;}
+.swatch-row{display:flex;gap:10px;margin-top:14px;}
+.swatch{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);}
+
+.view{display:none;}
+.view.active{display:block;animation:fade .22s cubic-bezier(0.16,1,0.3,1);}
+@keyframes fade{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+@media (prefers-reduced-motion: reduce){
+  .view.active{animation:none;}
+  *{transition-duration:.01ms !important;animation-duration:.01ms !important;}
+}
+
+/* ---------- accessibility: visible focus ---------- */
+a:focus-visible, button:focus-visible, input:focus-visible, .opt:focus-visible, .tab-pill:focus-visible{
+  outline:2px solid var(--teal);outline-offset:2px;border-radius:6px;
+}
+.nav a:focus-visible{outline-color:#fff;}
+
+.nav-badge{
+  margin-left:auto;font-size:9.5px;font-weight:700;letter-spacing:.02em;
+  background:rgba(255,255,255,.1);color:#C7CCBE;border:1px solid rgba(255,255,255,.14);
+  padding:2px 6px;border-radius:20px;flex-shrink:0;font-family:var(--font-heading);
+}
+.nav a.active .nav-badge{background:rgba(169,118,31,.22);color:#fff;border-color:rgba(169,118,31,.4);}
+
+.preview-banner{
+  display:flex;align-items:center;gap:12px;
+  background:var(--ink);color:#fff;border-radius:var(--radius-lg);
+  padding:14px 20px;margin-bottom:20px;
+}
+.preview-banner .dot{width:8px;height:8px;border-radius:50%;background:var(--amber);flex-shrink:0;box-shadow:0 0 0 4px rgba(192,106,44,.22);}
+.preview-banner strong{font-family:var(--font-heading);font-weight:700;}
+.preview-banner span.muted{color:#ADB3A4;font-size:12.5px;}
+
+.rm-card{position:relative;padding-top:26px;}
+.rm-card .rm-status{position:absolute;top:20px;right:20px;}
+.rm-version{font-family:var(--font-heading);font-size:12px;color:var(--text-faint);font-weight:700;letter-spacing:.04em;text-transform:uppercase;}
+.rm-name{font-family:var(--font-heading);font-size:17.5px;font-weight:700;margin:4px 0 12px;}
+.rm-mod{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--text-dim);padding:5px 0;line-height:1.5;}
+.rm-mod .dot2{width:5px;height:5px;border-radius:50%;background:var(--text-faint);margin-top:6px;flex-shrink:0;}
+.rm-track{display:flex;align-items:center;gap:0;margin:22px 0 28px;}
+.rm-node{width:13px;height:13px;border-radius:50%;flex-shrink:0;border:2.5px solid var(--paper);box-shadow:0 0 0 2px var(--line);}
+.rm-seg{flex:1;height:2px;background:var(--line);}
+.rm-seg.on{background:linear-gradient(90deg,var(--teal),var(--indigo));}
+.rm-node.on{background:var(--teal);box-shadow:0 0 0 2px var(--teal);}
+.rm-node.next{background:var(--amber);box-shadow:0 0 0 2px var(--amber);}
+
+.stack-wrap{display:flex;flex-direction:column;gap:0;}
+.stack-layer{
+  display:flex;align-items:center;gap:16px;
+  background:var(--paper-2);border:1px solid var(--line);border-radius:12px;
+  padding:14px 18px;position:relative;
+}
+.stack-num{
+  font-family:var(--font-heading);font-weight:700;font-size:13px;color:#fff;
+  width:30px;height:30px;border-radius:9px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,var(--teal),var(--indigo));
+}
+.stack-arrow{display:flex;justify-content:center;padding:3px 0;color:var(--text-faint);}
+.stack-name{font-family:var(--font-heading);font-weight:700;font-size:13.5px;}
+.stack-desc{font-size:12px;color:var(--text-dim);margin-top:2px;}
+
+.validate-row{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:13px 16px;border:1px solid var(--line);border-radius:11px;margin-bottom:10px;background:#fff;
+}
+.validate-row .meta{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+
+.tab-pill-row{display:inline-flex;background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:3px;gap:2px;margin-bottom:24px;}
+.tab-pill{font-size:12.5px;font-weight:700;padding:7px 15px;border-radius:8px;color:var(--text-dim);cursor:pointer;border:none;background:transparent;font-family:var(--font-heading);}
+.tab-pill.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(16,21,38,.08);}
+
+.skip-link{position:absolute;left:-999px;top:auto;background:var(--indigo);color:#fff;padding:10px 16px;border-radius:8px;z-index:100;font-size:13px;font-weight:600;}
+.skip-link:focus{left:14px;top:14px;}
+
+.mobile-bar{
+  display:none;align-items:center;justify-content:space-between;gap:12px;
+  position:sticky;top:0;z-index:40;
+  background:var(--ink);color:#fff;padding:12px 14px;
+}
+.mobile-bar .brand-word{font-family:var(--font-heading);font-weight:700;font-size:17px;color:#fff;}
+.mobile-bar .brand-tag{font-size:10px;color:#8C9186;}
+.hamburger-btn{
+  width:38px;height:38px;flex-shrink:0;border-radius:8px;border:1px solid rgba(255,255,255,.22);
+  background:transparent;color:#fff;display:flex;align-items:center;justify-content:center;
+}
+.hamburger-btn svg{width:19px;height:19px;}
+.scrim{display:none;position:fixed;inset:0;background:rgba(8,12,10,.5);z-index:35;}
+
+@media (max-width:960px){
+  .mobile-bar{display:flex;}
+  .scrim{display:none;}
+  body.nav-open .scrim{display:block;}
+  .shell{display:block;}
+  .sidebar{
+    position:fixed;top:0;left:0;height:100dvh;width:min(82vw,300px);
+    z-index:36;transform:translateX(-100%);transition:transform .22s ease;
+    box-shadow:2px 0 26px rgba(0,0,0,.28);
+  }
+  .sidebar.open{transform:translateX(0);}
+  main.canvas{padding:20px 16px 48px;max-width:100%;}
+  .page-title{font-size:22px;}
+  .g4{grid-template-columns:1fr !important;}
+  .g3{grid-template-columns:1fr !important;}
+  .g2{grid-template-columns:1fr !important;}
+  .g2e{grid-template-columns:1fr !important;}
+  .opt-grid{grid-template-columns:1fr 1fr !important;}
+  .phone{width:min(340px,84vw);}
+  .topbar-actions{width:100%;}
+  .topbar-actions .btn{flex:1;justify-content:center;}
+}
+</style>
+</head>
+<body>
+<div class="app-backdrop" aria-hidden="true"></div>
+<a class="skip-link" href="#canvas">Aller au contenu principal</a>
+
+<div class="mobile-bar">
+  <div><div class="brand-word">Elara</div><div class="brand-tag">OrbitTech Services</div></div>
+  <button class="hamburger-btn" id="hamburgerBtn" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="sidebar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  </button>
+</div>
+<div class="scrim" id="scrim"></div>
+
+<div class="shell">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar" id="sidebar" aria-label="Navigation principale">
+    <div class="brand">
+      <svg width="30" height="26" viewBox="0 0 30 26" fill="none" aria-hidden="true">
+        <path d="M0 13 L6 13 L8.5 3 L12 23 L15.5 8 L18.5 18 L21 13 L30 13" stroke="url(#g1)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="30" y2="0"><stop stop-color="#A9761F"/><stop offset="1" stop-color="#1A4A3C"/></linearGradient></defs>
+      </svg>
+      <div><div class="brand-word">Elara</div><div class="brand-tag" id="brandCtx">Tenant workspace</div></div>
+      <div class="env-pill" title="Supabase Realtime WebSocket Actif">
+        <span class="pulse-dot"></span>Live
+      </div>
+    </div>
+    <nav class="nav" id="navList" aria-label="Sections du produit"></nav>
+    <div class="sidebar-foot">
+      <div class="tenant-card">
+        <div class="tenant-avatar" aria-hidden="true">OT</div>
+        <div><div class="tenant-name">OrbitTech Services</div><div class="tenant-meta">Yaoundé · Plan Starter</div></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main class="canvas" id="canvas" tabindex="-1"></main>
+</div>
+
+<script>
+/* ---------------- icon set (24x24 stroke) ---------------- */
+const I = {
+  grid:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  scan:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8V5a1 1 0 0 1 1-1h3M20 8V5a1 1 0 0 0-1-1h-3M4 16v3a1 1 0 0 0 1 1h3M20 16v3a1 1 0 0 1-1 1h-3" stroke-linecap="round"/><path d="M3 12h18" stroke-linecap="round"/></svg>',
+  cfo:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l5-6 4 3 6-8" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 6h4v4" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  report:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M9 13h6M9 17h6M9 9h2" stroke-linecap="round"/></svg>',
+  assistant:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 12a8 8 0 1 1 3.2 6.4L4 20l1.2-3.6A7.96 7.96 0 0 1 4 12Z" stroke-linejoin="round"/><circle cx="9" cy="12" r=".8" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r=".8" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r=".8" fill="currentColor" stroke="none"/></svg>',
+  contacts:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5" stroke-linecap="round"/><path d="M16 4.5c1.7.4 3 1.9 3 3.6s-1.3 3.2-3 3.6M20 20c0-2.6-1.7-4.5-4-5.3" stroke-linecap="round"/></svg>',
+  docs:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6" stroke-linecap="round"/></svg>',
+  users:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="8" cy="9" r="3"/><circle cx="17" cy="10" r="2.4"/><path d="M2.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5M14.5 19c0-2.2 1.7-3.8 4-3.8s4 1.6 4 3.8" stroke-linecap="round"/></svg>',
+  settings:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 13.5a1.8 1.8 0 0 0 .36 2l.04.04a2.2 2.2 0 1 1-3.1 3.1l-.04-.04a1.8 1.8 0 0 0-2-.36 1.8 1.8 0 0 0-1.06 1.64V20a2.2 2.2 0 1 1-4.4 0v-.06A1.8 1.8 0 0 0 8.14 18.3a1.8 1.8 0 0 0-2 .36l-.04.04a2.2 2.2 0 1 1-3.1-3.1l.04-.04a1.8 1.8 0 0 0 .36-2 1.8 1.8 0 0 0-1.64-1.06H1.7a2.2 2.2 0 1 1 0-4.4h.06A1.8 1.8 0 0 0 3.42 6.94a1.8 1.8 0 0 0-.36-2l-.04-.04a2.2 2.2 0 1 1 3.1-3.1l.04.04a1.8 1.8 0 0 0 2 .36H8.3A1.8 1.8 0 0 0 9.36 .56V.5a2.2 2.2 0 1 1 4.4 0v.06a1.8 1.8 0 0 0 1.06 1.64 1.8 1.8 0 0 0 2-.36l.04-.04a2.2 2.2 0 1 1 3.1 3.1l-.04.04a1.8 1.8 0 0 0-.36 2v.06a1.8 1.8 0 0 0 1.64 1.06h.06a2.2 2.2 0 1 1 0 4.4h-.06a1.8 1.8 0 0 0-1.64 1.06Z"/></svg>',
+  health:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h4l2 7 4-14 2 7h6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  mobile:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="6" y="2" width="12" height="20" rx="2.5"/><path d="M11 18h2" stroke-linecap="round"/></svg>',
+  wand:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 4l1.3 3.2L19.5 8.5 16.3 9.8 15 13l-1.3-3.2L10.5 8.5l3.2-1.3L15 4Z" stroke-linejoin="round"/><path d="M5 14l.8 2 2 .8-2 .8L5 19.6l-.8-2-2-.8 2-.8L5 14Z" stroke-linejoin="round"/><path d="M4 21l7-7" stroke-linecap="round"/></svg>',
+  logo:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M2 12h4l2.5-7 4 14 3-11 2 4h4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  commercial:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l6-6 4 4 8-9" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 6h6v6" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 21h18" stroke-linecap="round"/></svg>',
+  ops:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7l9-4 9 4-9 4-9-4Z" stroke-linejoin="round"/><path d="M3 7v10l9 4 9-4V7" stroke-linejoin="round"/><path d="M12 11v10" /></svg>',
+  shield:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l7 3v6c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V6l7-3Z" stroke-linejoin="round"/><path d="M9 12l2 2 4-4.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  layers:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l9 5-9 5-9-5 9-5Z" stroke-linejoin="round"/><path d="M3 13l9 5 9-5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 18l9 5 9-5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  flag:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 3v18" stroke-linecap="round"/><path d="M5 4h11l-2.5 4L16 12H5" stroke-linejoin="round"/></svg>',
+  gen:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M13 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9z"/><path d="M13 3v6h5" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.3 13.2l.7 1.7 1.7.7-1.7.7-.7 1.7-.7-1.7-1.7-.7 1.7-.7.7-1.7Z" stroke-linejoin="round"/></svg>',
+  badge:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="3" width="14" height="18" rx="2.4"/><circle cx="12" cy="10.5" r="2.6"/><path d="M8.3 17c0-2 1.7-3.2 3.7-3.2s3.7 1.2 3.7 3.2" stroke-linecap="round"/></svg>',
+  flow:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="4" width="6.5" height="5.5" rx="1.4"/><rect x="15" y="4" width="6.5" height="5.5" rx="1.4"/><rect x="9" y="15" width="6.5" height="5.5" rx="1.4"/><path d="M9 6.8H6.2a1 1 0 0 0-1 1V17" stroke-linecap="round"/><path d="M15 6.8h2.8a1 1 0 0 1 1 1V17" stroke-linecap="round"/><path d="M12.2 15V9.5" stroke-linecap="round"/></svg>',
+  puzzle:'<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4h4a1 1 0 0 1 1 1v2.2a1.8 1.8 0 0 0 2.6 1.6A1.8 1.8 0 0 1 19.2 10.4 1.8 1.8 0 0 0 20 13a1.8 1.8 0 0 1-1.6 2.6H16a1 1 0 0 1-1-1v-2.2a1.8 1.8 0 0 0-3.4 0V16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.2a1.8 1.8 0 0 0-2.6-1.6A1.8 1.8 0 0 1 4.8 9 1.8 1.8 0 0 0 4 6.4 1.8 1.8 0 0 1 5.6 3.8 1.8 1.8 0 0 0 8 5.2 1 1 0 0 1 9 4Z" stroke-linejoin="round" stroke-linecap="round"/></svg>',
+};
+
+const pages = [
+  {id:'dashboard', label:'Tableau de bord', icon:I.grid, section:'Espace entreprise'},
+  {id:'scanner',   label:'Business Scanner', icon:I.scan},
+  {id:'cfo',       label:'CFO', icon:I.cfo},
+  {id:'commercial',label:'Commercial', icon:I.commercial},
+  {id:'ops',       label:'Opérations', icon:I.ops},
+  {id:'report',    label:'Rapport', icon:I.report},
+  {id:'assistant', label:'Assistant', icon:I.assistant},
+  {id:'clients',   label:'Clients & fournisseurs', icon:I.contacts, section:'Relations & données'},
+  {id:'documents', label:'Documents', icon:I.docs},
+  {id:'docgen',    label:'Génération de documents', icon:I.gen},
+  {id:'users',     label:'Utilisateurs & rôles', icon:I.users},
+  {id:'settings',  label:'Paramètres & abonnement', icon:I.settings},
+  {id:'team',      label:'Employés', icon:I.badge, section:'Organisation & automatisation'},
+  {id:'workflows', label:'Concepteur de workflows', icon:I.flow},
+  {id:'agents',    label:'Agents & Extensions', icon:I.puzzle, section:'Écosystème IA'},
+  {id:'admin',     label:'Santé plateforme', icon:I.health, section:'Console admin'},
+  {id:'security',  label:'Sécurité & gouvernance', icon:I.shield},
+  {id:'architecture', label:'Architecture technique', icon:I.layers},
+  {id:'roadmap',   label:'Feuille de route', icon:I.flag, section:'Vision produit'},
+  {id:'mobile',    label:'Aperçu mobile', icon:I.mobile, section:'Autres surfaces'},
+  {id:'onboarding',label:'Onboarding', icon:I.wand},
+  {id:'brand',     label:'Système de marque', icon:I.logo},
+];
+
+const navList = document.getElementById('navList');
+navList.innerHTML = pages.map(p => `
+  ${p.section ? `<div class="nav-section">${p.section}</div>` : ''}
+  <a data-id="${p.id}" href="#${p.id}">${p.icon}<span>${p.label}</span>${p.badge?`<span class="nav-badge">${p.badge}</span>`:''}</a>
+`).join('');
+
+function setActive(id){
+  document.querySelectorAll('.nav a').forEach(a=>{
+    const isActive = a.dataset.id===id;
+    a.classList.toggle('active', isActive);
+    if(isActive){ a.setAttribute('aria-current','page'); } else { a.removeAttribute('aria-current'); }
+  });
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active', v.id==='v-'+id));
+  document.getElementById('brandCtx').textContent = (id==='admin'||id==='security'||id==='architecture') ? 'Console admin' : 'OrbitTech Services';
+  canvas.scrollTop = 0;
+}
+navList.addEventListener('click', e=>{
+  const a = e.target.closest('a'); if(!a) return;
+  e.preventDefault();
+  setActive(a.dataset.id);
+  closeNav();
+});
+
+/* ---------------- mobile nav drawer ---------------- */
+const sidebarEl = document.getElementById('sidebar');
+const scrimEl = document.getElementById('scrim');
+const hamburgerBtn = document.getElementById('hamburgerBtn');
+function openNav(){
+  sidebarEl.classList.add('open');
+  document.body.classList.add('nav-open');
+  hamburgerBtn.setAttribute('aria-expanded','true');
+}
+function closeNav(){
+  sidebarEl.classList.remove('open');
+  document.body.classList.remove('nav-open');
+  hamburgerBtn.setAttribute('aria-expanded','false');
+}
+hamburgerBtn.addEventListener('click', ()=> sidebarEl.classList.contains('open') ? closeNav() : openNav());
+scrimEl.addEventListener('click', closeNav);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeNav(); });
+
+/* ---------------- shared bits ---------------- */
+const wave = `<svg class="wave-rule" viewBox="0 0 46 14" fill="none"><path d="M0 7h4L6 2l4 10 3-9 2 6 3-6 3 6 2-6 3 9 4-10 2 5h4" stroke="url(#wg)" stroke-width="1.4" stroke-linecap="round" fill="none"/><defs><linearGradient id="wg" x1="0" y1="0" x2="46" y2="0"><stop stop-color="#A9761F"/><stop offset="1" stop-color="#1A4A3C"/></linearGradient></defs></svg>`;
+
+function ring(val, size=88){
+  const deg = (val/100)*360;
+  const color = val>=75?'#A9761F': val>=55?'#C06A2C':'#A23B3B';
+  return `<div class="ring" style="width:${size}px;height:${size}px;background:conic-gradient(${color} ${deg}deg, #ECE9DD 0)">
+    <div class="ring-val">${val}</div>
+  </div>`;
+}
+
+function topbar(eyebrow,title,sub,actions){
+  return `<div class="topbar">
+    <div><div class="eyebrow">${wave}<span>${eyebrow}</span></div>
+    <h1 class="page-title">${title}</h1>
+    <p class="page-sub">${sub}</p></div>
+    <div class="topbar-actions">
+      <button class="btn-live-stream" onclick="triggerSimulatedSupabaseEvent()" title="Simuler l'injection d'un flux Supabase">
+        <span class="pulse-dot"></span> Webhook Live
+      </button>
+      ${actions||''}
+    </div>
+  </div>`;
+}
+
+const canvas = document.getElementById('canvas');
+
+/* ================= 1. DASHBOARD ================= */
+canvas.innerHTML += `<section class="view" id="v-dashboard">
+${topbar('Espace · OrbitTech Services','Bonjour, Aïcha','Voici l’état de votre entreprise au 8 septembre 2026.',
+  `<button class="btn btn-ghost">Importer un document</button><button class="btn btn-primary teal">Poser une question à l’Assistant</button>`)}
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Chiffre d’affaires (mois)</div><div class="kpi-value" id="kpi-ca">4 280 000 F</div><div class="kpi-delta up">↑ 12% vs mois dernier</div></div>
+  <div class="card"><div class="kpi-label">Marge brute</div><div class="kpi-value">31,4%</div><div class="kpi-delta up">↑ 2,1 pts</div></div>
+  <div class="card"><div class="kpi-label">Trésorerie disponible</div><div class="kpi-value" id="kpi-tresor">1 065 000 F</div><div class="kpi-delta down">↓ 6% vs mois dernier</div></div>
+  <div class="card"><div class="kpi-label">Factures impayées</div><div class="kpi-value">7 <span style="font-size:13px;color:var(--text-dim);font-weight:500;">· 612 000 F</span></div><div class="kpi-delta down">3 en retard &gt; 30 j</div></div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="section-title">Business Health Score</div>
+    <div class="section-sub">Synthèse pondérée des 4 dimensions clés</div>
+    <div style="display:flex;gap:26px;align-items:center;">
+      ${ring(78,100)}
+      <div style="flex:1;display:flex;flex-direction:column;gap:12px;">
+        ${row('Santé financière',82,'#A9761F')}
+        ${row('Santé commerciale',74,'#1A4A3C')}
+        ${row('Recouvrement',58,'#C06A2C')}
+        ${row('Qualité des données',91,'#A9761F')}
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">Ventes des 6 derniers mois</div>
+    <div class="section-sub">Chiffre d’affaires mensuel</div>
+    <div style="display:flex;align-items:flex-end;gap:14px;height:150px;padding-top:10px;">
+      ${[38,44,36,52,48,100].map((v,i)=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;">
+        <div style="width:100%;height:${v}px;border-radius:6px 6px 2px 2px;background:${i===5?'linear-gradient(180deg,var(--teal),var(--indigo))':'#E6E3D6'}"></div>
+        <span style="font-size:11px;color:var(--text-faint);font-weight:700;font-family:var(--font-heading);">${['Avr','Mai','Juin','Juil','Août','Sept'][i]}</span>
+      </div>`).join('')}
+    </div>
+  </div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="section-title">Créances à recouvrer</div>
+    <div class="section-sub">Factures clients en attente de paiement</div>
+    <div id="creances-container">
+      ${listRow('Clinique Excellence Santé','Facture #2026-0341 · retard 42 j','312 000 F')}
+      ${listRow('Collège Notre-Dame','Facture #2026-0356 · retard 18 j','148 000 F')}
+      ${listRow('Groupe Ngassa & Fils','Facture #2026-0362 · échéance dans 3 j','152 000 F')}
+    </div>
+  </div>
+  <div class="ai-card">
+    <div class="ai-badge">${I.wand}Recommandations Elara</div>
+    <div class="section-title" style="margin-bottom:14px;">Priorités de la semaine</div>
+    ${aiRow('Urgent','Relancer Clinique Excellence Santé','var(--red)')}
+    ${aiRow('Anomalie','Dépense licences logicielles +40% vs moyenne','var(--amber)')}
+    ${aiRow('Opportunité','3 produits en rupture fréquente','var(--indigo)')}
+  </div>
+</div>
+</section>`;
+
+function usageBar(label,frac,val,color){
+  return `<div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:var(--text-dim);">${label}</span><strong class="mono">${frac}</strong></div>
+    <div class="progress"><div style="width:${val}%;background:${color}"></div></div>
+  </div>`;
+}
+function row(label,val,color){
+  return `<div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:var(--text-dim);">${label}</span><strong class="mono">${val}</strong></div>
+    <div class="progress"><div style="width:${val}%;background:${color}"></div></div>
+  </div>`;
+}
+function listRow(name,meta,amount){
+  return `<div class="list-row"><div><div class="name-cell">${name}</div><div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">${meta}</div></div><div class="mono" style="font-weight:700;">${amount}</div></div>`;
+}
+function aiRow(tag,text,color){
+  return `<div class="list-row"><span class="pill" style="background:${color}18;color:${color};margin-right:12px;">${tag}</span><span style="flex:1;font-size:13px;">${text}</span></div>`;
+}
+
+/* ================= 2. BUSINESS SCANNER ================= */
+canvas.innerHTML += `<section class="view" id="v-scanner">
+${topbar('Business Scanner','Importer un document','Photo, PDF, Excel ou reçu — Elara comprend le document tel qu’il est envoyé.',
+  `<button class="btn btn-ghost">Historique des imports</button>`)}
+
+<div class="grid g2">
+  <div>
+    <div class="card" style="border:1.6px dashed var(--line);text-align:center;padding:52px 20px;background:#fff;">
+      <div style="width:52px;height:52px;border-radius:14px;background:var(--blue-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--indigo-deep);">${I.scan}</div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:6px;font-family:var(--font-heading);">Glissez vos documents ici</div>
+      <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:18px;">Ou envoyez-les directement depuis WhatsApp — aucune mise en forme requise.</div>
+      <div style="display:flex;gap:8px;justify-content:center;">
+        ${['PDF','JPG / PNG','Excel','CSV'].map(t=>`<span class="pill pill-neutral">${t}</span>`).join('')}
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="section-title">En cours de traitement</div>
+      <div class="section-sub">3 documents</div>
+      ${scanRow('facture_licence_office365.jpg','pill-info','Extrait')}
+      ${scanRow('recu_materiel_dell.jpg','pill-warning','À valider')}
+      ${scanRow('tickets_support_aout.xlsx','pill-neutral','En cours')}
+    </div>
+  </div>
+
+  <div class="ai-card">
+    <div class="ai-badge">${I.wand}Champs extraits automatiquement</div>
+    <div class="section-title">Reçu matériel informatique</div>
+    <div class="section-sub">Vérifiez avant archivage</div>
+    ${extractField('Fournisseur','Dell Technologies Afrique',false)}
+    ${extractField('Date','04/09/2026',false)}
+    ${extractField('Montant','38 500 F',true)}
+    ${extractField('Catégorie','Matériel informatique',false)}
+    <div style="display:flex;gap:10px;margin-top:18px;">
+      <button class="btn btn-primary teal" style="flex:1;justify-content:center;">Valider et archiver</button>
+      <button class="btn btn-ghost">Corriger</button>
+    </div>
+  </div>
+</div>
+</section>`;
+
+function scanRow(name,pillClass,pillText){
+  return `<div class="list-row"><div style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="background:var(--paper);color:var(--text-dim);">${I.docs}</div><span class="name-cell">${name}</span></div><span class="pill ${pillClass}">${pillText}</span></div>`;
+}
+function extractField(label,val,warn){
+  return `<div style="margin-bottom:12px;">
+    <div style="font-size:11px;color:var(--text-dim);font-weight:700;margin-bottom:5px;font-family:var(--font-heading);text-transform:uppercase;">${label}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 13px;border-radius:9px;background:${warn?'var(--amber-bg)':'var(--green-bg)'};font-size:13px;font-weight:600;">
+      <span>${val}</span><span style="font-size:11px;color:${warn?'var(--amber)':'var(--green)'};font-weight:700;">${warn?'⚠ inhabituel':'✓ vérifié'}</span>
+    </div></div>`;
+}
+
+/* ================= 3. CFO ================= */
+canvas.innerHTML += `<section class="view" id="v-cfo">
+${topbar('Module · CFO','Trésorerie & marges','Analyse financière continue à partir de vos documents et transactions.',
+  `<button class="btn btn-primary teal">Générer le rapport</button>`)}
+
+<div style="display:flex;gap:8px;margin-bottom:18px;">
+  ${['Trésorerie','Marges','Créances','Dépenses','Anomalies'].map((t,i)=>`<span class="pill ${i===0?'pill-info':'pill-neutral'}" style="padding:7px 14px;cursor:pointer;">${t}</span>`).join('')}
+</div>
+
+<div class="grid g2" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="section-title">Évolution de la trésorerie</div>
+    <div class="section-sub">Solde de fin de mois (plein) et prévision à 30 jours (pointillé), à partir des créances et charges connues</div>
+    <svg viewBox="0 0 400 140" width="100%" height="150">
+      <polyline points="10,90 75,70 140,110 205,55 270,80 335,35" fill="none" stroke="#1A4A3C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="10,120 75,105 140,112 205,90 270,95 335,68" fill="none" stroke="#A9761F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="335,35 400,50" fill="none" stroke="#1A4A3C" stroke-width="2.4" stroke-dasharray="4 4" stroke-linecap="round"/>
+    </svg>
+    <div style="display:flex;gap:18px;font-size:11.5px;color:var(--text-dim);margin-top:4px;flex-wrap:wrap;">
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#1A4A3C;margin-right:6px;"></span>Trésorerie</span>
+      <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#A9761F;margin-right:6px;"></span>Créances encaissées</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding:12px 14px;border-radius:9px;background:var(--amber-bg);">
+      <div style="font-size:12px;font-weight:700;color:var(--teal-deep);">Projection à 30 j : solde estimé 1 840 000 F si les 4 factures en attente sont encaissées à échéance</div>
+      <span style="font-size:10.5px;font-weight:700;color:var(--amber);font-family:var(--font-heading);">Estimation, non garantie</span>
+    </div>
+  </div>
+  <div class="ai-card">
+    <div class="ai-badge">${I.wand}Anomalies détectées</div>
+    ${aiRow('Licences','235 000 F, +40% vs moyenne 3 mois','var(--amber)')}
+    ${aiRow('Doublon','Facture Dell Technologies — montants identiques 03/09 et 05/09','var(--red)')}
+    ${aiRow('Marge','Catégorie Support IT : 27% vs 33% habituel','var(--indigo)')}
+  </div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px;">
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+      <div class="section-title" style="margin-bottom:0;">Radar fiscal — TVA</div>
+      <span class="pill pill-warning">Échéance 15/09</span>
+    </div>
+    <div class="section-sub">Calculé à partir des factures et dépenses de la Mémoire Entreprise — n'effectue aucune télédéclaration</div>
+    <div class="grid g2" style="gap:10px;margin-top:12px;">
+      <div style="padding:12px 14px;border-radius:9px;background:var(--paper);">
+        <div style="font-size:10.5px;color:var(--text-dim);font-weight:700;font-family:var(--font-heading);text-transform:uppercase;">TVA collectée (août)</div>
+        <div style="font-family:var(--font-heading);font-size:17px;font-weight:700;margin-top:2px;" class="mono">742 300 F</div>
+      </div>
+      <div style="padding:12px 14px;border-radius:9px;background:var(--paper);">
+        <div style="font-size:10.5px;color:var(--text-dim);font-weight:700;font-family:var(--font-heading);text-transform:uppercase;">TVA déductible (août)</div>
+        <div style="font-family:var(--font-heading);font-size:17px;font-weight:700;margin-top:2px;" class="mono">318 900 F</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;padding:10px 13px;border-radius:9px;background:var(--red-bg);">
+      <span style="font-size:12.5px;font-weight:700;font-family:var(--font-heading);">TVA nette à déclarer</span>
+      <span class="mono" style="font-weight:700;">423 400 F</span>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:10px;">⚠ 2 retenues à la source (client habilité) détectées sur les factures de juillet — à reporter en déduction avant dépôt sur Fiscalis DGI.</div>
+  </div>
+  <div class="card">
+    <div class="section-title">Rapprochement bancaire &amp; Mobile Money</div>
+    <div class="section-sub">Importez un relevé pour faire correspondre automatiquement paiements, factures et commandes</div>
+    <div style="border:1.4px dashed var(--line);border-radius:9px;padding:16px;text-align:center;margin:10px 0 12px;background:var(--paper);">
+      <button class="btn btn-ghost" style="margin:0 auto;">Importer un relevé (banque / Orange Money / MTN MoMo)</button>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <div style="flex:1;padding:10px 12px;border-radius:9px;background:var(--green-bg);text-align:center;">
+        <div style="font-family:var(--font-heading);font-size:17px;font-weight:700;">58</div>
+        <div style="font-size:11px;color:var(--text-dim);">Mouvements rapprochés</div>
+      </div>
+      <div style="flex:1;padding:10px 12px;border-radius:9px;background:var(--amber-bg);text-align:center;">
+        <div style="font-family:var(--font-heading);font-size:17px;font-weight:700;">6</div>
+        <div style="font-size:11px;color:var(--text-dim);">À vérifier manuellement</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">Factures impayées</div>
+  <table class="tbl">
+    <thead><tr><th>Client</th><th>N° facture</th><th>Échéance</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+    <tbody>
+      <tr><td class="name-cell">Clinique Excellence Santé</td><td class="mono">#2026-0341</td><td>28/07/2026</td><td class="mono">312 000 F</td><td><span class="pill pill-danger">Retard 42 j</span></td><td><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Relancer</button></td></tr>
+      <tr><td class="name-cell">Collège Notre-Dame</td><td class="mono">#2026-0356</td><td>21/08/2026</td><td class="mono">148 000 F</td><td><span class="pill pill-danger">Retard 18 j</span></td><td><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Relancer</button></td></tr>
+      <tr><td class="name-cell">Groupe Ngassa & Fils</td><td class="mono">#2026-0362</td><td>11/09/2026</td><td class="mono">152 000 F</td><td><span class="pill pill-warning">À échoir</span></td><td><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Programmer</button></td></tr>
+      <tr><td class="name-cell">Cabinet Fotso Consulting</td><td class="mono">#2026-0365</td><td>15/09/2026</td><td class="mono">89 000 F</td><td><span class="pill pill-info">En cours</span></td><td></td></tr>
+    </tbody>
+  </table>
+  <div style="font-size:11.5px;color:var(--text-dim);margin-top:10px;">« Relancer » prépare le message à partir du modèle Lettre_Relance.docx et attend votre validation avant tout envoi — aucune relance n'est envoyée automatiquement.</div>
+</div>
+</section>`;
+
+/* ================= 4. RAPPORT ================= */
+canvas.innerHTML += `<section class="view" id="v-report">
+${topbar('Rapport généré automatiquement','Rapport mensuel','OrbitTech Services · période du 1ᵉʳ au 30 août 2026 · généré le 8 septembre 2026.',
+  `<button class="btn btn-ghost">Partager</button><button class="btn btn-primary teal">Exporter en PDF</button>`)}
+
+<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:16px;background:var(--green-bg);border:none;">
+  <span style="font-size:15px;">📲</span>
+  <div style="font-size:12.5px;color:var(--ink-2);"><strong>Diffusion automatique :</strong> ce résumé est envoyé chaque lundi 7h par WhatsApp au dirigeant, sans qu'il ait besoin d'ouvrir Elara — les urgences (facture très en retard, anomalie forte) déclenchent une alerte immédiate hors du cycle hebdomadaire.</div>
+</div>
+
+<div class="card" style="display:flex;align-items:center;gap:26px;margin-bottom:16px;background:var(--ink);border:none;color:#fff;">
+  ${ring(78,90)}
+  <div>
+    <div style="font-size:12px;color:#ADB3A4;font-weight:700;font-family:var(--font-heading);text-transform:uppercase;">Business Health Score</div>
+    <div style="font-family:var(--font-heading);font-size:20px;font-weight:700;margin-top:2px;">Bon état général — 3 points à traiter</div>
+    <div style="font-size:12px;color:#ADB3A4;margin-top:4px;">Entreprises du secteur Services/Distribution, région de Yaoundé : moyenne 71 — vous êtes <strong style="color:#fff;">7 points au-dessus</strong> (comparaison anonymisée, calculée pour tout secteur et toute ville dès qu’un nombre suffisant de tenants y est actif)</div>
+  </div>
+</div>
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Santé financière</div><div class="kpi-value" style="color:var(--green);">82</div></div>
+  <div class="card"><div class="kpi-label">Santé commerciale</div><div class="kpi-value" style="color:var(--indigo);">74</div></div>
+  <div class="card"><div class="kpi-label">Recouvrement</div><div class="kpi-value" style="color:var(--amber);">58</div></div>
+  <div class="card"><div class="kpi-label">Qualité des données</div><div class="kpi-value" style="color:var(--green);">91</div></div>
+</div>
+
+<div class="grid g3">
+  <div class="card">
+    <div class="section-title" style="color:var(--red);">Problèmes détectés</div>
+    <ul style="padding-left:18px;margin:14px 0 0;font-size:13px;line-height:1.9;color:var(--text-dim);">
+      <li>3 factures clients &gt; 30 j de retard, soit 460 000 F</li>
+      <li>Dépense licences logicielles : écart de 40% vs moyenne</li>
+      <li>Marge Support IT en recul (27% vs 33%)</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="section-title" style="color:var(--indigo);">Opportunités</div>
+    <ul style="padding-left:18px;margin:14px 0 0;font-size:13px;line-height:1.9;color:var(--text-dim);">
+      <li>3 références matériel en rupture fréquente — commande anticipée conseillée</li>
+      <li>Collège Notre-Dame : commandes +18%/mois depuis mai</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="section-title" style="color:var(--green);">Actions prioritaires</div>
+    <ul style="padding-left:18px;margin:14px 0 0;font-size:13px;line-height:1.9;color:var(--text-dim);">
+      <li>Relancer Clinique Excellence Santé (312 000 F)</li>
+      <li>Vérifier la facture Dell Technologies potentiellement dupliquée</li>
+      <li>Passer commande anticipée sur 3 références</li>
+    </ul>
+  </div>
+</div>
+</section>`;
+
+/* ================= 5. ASSISTANT ================= */
+canvas.innerHTML += `<section class="view" id="v-assistant">
+${topbar('Espace de dialogue','Assistant','Répond uniquement à partir des données réelles de votre entreprise.','')}
+
+<div class="chat-wrap" style="margin-bottom:20px;">
+  <div class="msg-user">Combien me doit Clinique Excellence Santé, et depuis quand ?</div>
+  <div class="msg-ai"><div class="avatar-ai">${I.wand}</div><div class="bubble">
+    Clinique Excellence Santé vous doit <strong>312 000 F</strong> sur la facture #2026-0341, émise le 28 juillet 2026. Elle est en retard de <strong>42 jours</strong>, sans paiement partiel enregistré.
+    <div class="chip-row"><span class="chip">📄 Facture #2026-0341</span><span class="chip">🗂 Historique paiements</span></div>
+  </div></div>
+
+  <div class="msg-user">Et ma marge sur le support IT ce mois-ci ?</div>
+  <div class="msg-ai"><div class="avatar-ai">${I.wand}</div><div class="bubble">
+    Votre marge sur la catégorie <strong>Support IT</strong> est de <strong>27%</strong> en août, contre 33% en moyenne sur 6 mois — un écart de <strong style="color:var(--red);">−6 pts</strong>, lié à une hausse du prix d’achat chez Dell Technologies depuis le 12 août.
+    <div class="chip-row"><span class="chip">📈 12 factures Dell Technologies</span><span class="chip">🧠 Business Memory</span></div>
+  </div></div>
+</div>
+
+<div class="chip-row" style="margin-bottom:14px;">
+  ${['Qui me doit de l’argent ?','Mes dépenses principales','Produits les plus rentables'].map(t=>`<span class="chip" style="background:#fff;border:1px solid var(--line);color:var(--text);">${t}</span>`).join('')}
+</div>
+<div style="display:flex;gap:10px;">
+  <input class="field" placeholder="Posez une question sur vos ventes, dépenses, clients…" style="flex:1;">
+  <button class="btn btn-primary teal">Envoyer</button>
+</div>
+</section>`;
+
+/* ================= 6. CLIENTS & FOURNISSEURS ================= */
+canvas.innerHTML += `<section class="view" id="v-clients">
+${topbar('Relations commerciales','Clients & fournisseurs','Suivi des soldes, relances et historique de paiement, en un seul endroit.',
+  `<button class="btn btn-ghost">Importer</button><button class="btn btn-primary teal">Ajouter un contact</button>`)}
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Créances clients</div><div class="kpi-value" style="color:var(--red);">612 000 F</div><div class="kpi-delta flat">7 factures en attente</div></div>
+  <div class="card"><div class="kpi-label">Dettes fournisseurs</div><div class="kpi-value">248 000 F</div><div class="kpi-delta flat">3 échéances ce mois</div></div>
+  <div class="card"><div class="kpi-label">Clients actifs</div><div class="kpi-value">34</div><div class="kpi-delta up">↑ 4 ce mois</div></div>
+  <div class="card"><div class="kpi-label">Délai moyen de paiement</div><div class="kpi-value">27 j</div><div class="kpi-delta down">↑ 5 j vs moyenne</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="section-title">Clients</div>
+    <table class="tbl">
+      <thead><tr><th>Client</th><th>Secteur</th><th>Solde</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="name-cell">Clinique Excellence Santé</td><td>Santé</td><td class="mono" style="color:var(--red);">312 000 F</td><td><span class="pill pill-danger">Retard 42 j</span></td></tr>
+        <tr><td class="name-cell">Collège Notre-Dame</td><td>Éducation</td><td class="mono" style="color:var(--red);">148 000 F</td><td><span class="pill pill-danger">Retard 18 j</span></td></tr>
+        <tr><td class="name-cell">Groupe Ngassa & Fils</td><td>Industrie</td><td class="mono">152 000 F</td><td><span class="pill pill-warning">À échoir</span></td></tr>
+        <tr><td class="name-cell">Cabinet Fotso Consulting</td><td>Conseil</td><td class="mono">89 000 F</td><td><span class="pill pill-info">En cours</span></td></tr>
+        <tr><td class="name-cell">Dell Technologies Afrique</td><td>Fournisseur boissons</td><td class="mono">0 F</td><td><span class="pill pill-success">À jour</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Créances par ancienneté</div>
+      ${row('0 – 15 jours',15,'#A9761F')}<div style="height:10px;"></div>
+      ${row('16 – 30 jours',30,'#C06A2C')}<div style="height:10px;"></div>
+      ${row('+ 30 jours',75,'#A23B3B')}
+    </div>
+    <div class="ai-card">
+      <div class="ai-badge">${I.wand}Suggestions Elara</div>
+      ${aiRow('Relance','Clinique Excellence Santé — 42 j de retard, relance ferme recommandée','var(--red)')}
+      ${aiRow('Opportunité','Collège Notre-Dame — commandes +18%/mois, bon candidat crédit','var(--green)')}
+    </div>
+  </div>
+</div>
+</section>`;
+
+/* ================= 7. DOCUMENTS ================= */
+canvas.innerHTML += `<section class="view" id="v-documents">
+${topbar('Mini-GED native','Documents','Tous vos documents classés et retrouvables sans effort.',
+  `<button class="btn btn-ghost">Nouveau dossier</button><button class="btn btn-primary teal">Déposer un document</button>`)}
+
+<div class="card" style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:14px 18px;">
+  <span style="color:var(--text-faint);">${I.docs}</span>
+  <input class="field" style="border:none;padding:0;" placeholder="Recherche intelligente — ex. « toutes les factures Dell Technologies de plus de 300 000 F depuis juin »">
+  <button class="btn btn-primary teal">Rechercher</button>
+</div>
+
+<div class="grid g4" style="margin-bottom:16px;">
+  ${[['Factures clients','128'],['Factures fournisseurs','96'],['Reçus & notes de frais','214'],['Contrats & juridique','12']].map(([n,c])=>`
+    <div class="card" style="display:flex;align-items:center;gap:12px;">
+      <div class="tag-icon" style="background:var(--blue-bg);color:var(--indigo-deep);">${I.docs}</div>
+      <div><div style="font-weight:700;font-size:13px;font-family:var(--font-heading);">${n}</div><div style="font-size:11.5px;color:var(--text-dim);">${c} documents</div></div>
+    </div>`).join('')}
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="section-title">Documents récents</div>
+    <table class="tbl">
+      <thead><tr><th>Nom</th><th>Ajouté</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="name-cell">facture_licence_office365.pdf</td><td>Il y a 2 h</td><td><span class="pill pill-info">Extrait</span></td></tr>
+        <tr><td class="name-cell">recu_materiel_dell.jpg</td><td>Il y a 5 h</td><td><span class="pill pill-warning">À valider</span></td></tr>
+        <tr><td class="name-cell">releve_uba_aout.pdf</td><td>1 sept.</td><td><span class="pill pill-danger">Anomalie détectée</span></td></tr>
+        <tr><td class="name-cell">facture_2026-0341.pdf</td><td>28 juil.</td><td><span class="pill pill-neutral">Impayée · 42 j</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="section-title">Stockage</div>
+    <div class="section-sub">Plan Starter · 2 Go inclus</div>
+    ${row('1,28 Go utilisés',64,'#1A4A3C')}
+    <div class="divider"></div>
+    <div class="section-title">Qualité du classement</div>
+    <div style="font-size:13px;color:var(--text-dim);margin-top:10px;line-height:1.8;">✓ 96% des documents classés automatiquement<br>⚠ 5 documents à vérifier manuellement</div>
+  </div>
+</div>
+</section>`;
+
+/* ================= 7bis. GÉNÉRATION DE DOCUMENTS ================= */
+canvas.innerHTML += `<section class="view" id="v-docgen">
+${topbar('Production documentaire','Génération de documents','Les documents créés par l’Assistant IA lors de vos échanges, et le modèle Word qui sert de base à leur rédaction.',
+  `<button class="btn btn-ghost">Historique complet</button><button class="btn btn-primary teal">${I.wand} Générer un document</button>`)}
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Documents générés (mois)</div><div class="kpi-value">46</div><div class="kpi-delta up">↑ 12% vs mois dernier</div></div>
+  <div class="card"><div class="kpi-label">Temps moyen de génération</div><div class="kpi-value">8 s</div><div class="kpi-delta flat">Quasi instantané</div></div>
+  <div class="card"><div class="kpi-label">Validés sans modification</div><div class="kpi-value">91%</div><div class="kpi-delta up">↑ 4 pts</div></div>
+  <div class="card"><div class="kpi-label">Modèles actifs</div><div class="kpi-value">3</div><div class="kpi-delta flat">3 types de documents couverts</div></div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="section-title">Documents générés récemment</div>
+    <div class="section-sub">Produits automatiquement depuis une conversation avec l’Assistant ou le CFO IA</div>
+    <table class="tbl">
+      <thead><tr><th>Document</th><th>Généré depuis</th><th>Modèle utilisé</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="name-cell">Facture proforma — Clinique Excellence Santé.docx</td><td style="font-size:12.5px;color:var(--text-dim);">Assistant · aujourd’hui 08:14</td><td class="mono" style="font-size:12px;">Facture_Standard.docx</td><td><span class="pill pill-success">Prêt</span></td></tr>
+        <tr><td class="name-cell">Relance impayé — Collège Notre-Dame.docx</td><td style="font-size:12.5px;color:var(--text-dim);">Assistant · hier 17:02</td><td class="mono" style="font-size:12px;">Lettre_Relance.docx</td><td><span class="pill pill-warning">À relire</span></td></tr>
+        <tr><td class="name-cell">Rapport mensuel — Août 2026.docx</td><td style="font-size:12.5px;color:var(--text-dim);">Rapport IA · 1 sept.</td><td class="mono" style="font-size:12px;">Rapport_Mensuel.docx</td><td><span class="pill pill-success">Prêt</span></td></tr>
+        <tr><td class="name-cell">Attestation de bonne exécution.docx</td><td style="font-size:12.5px;color:var(--text-dim);">Assistant · 29 août</td><td class="mono" style="font-size:12px;">Attestation.docx</td><td><span class="pill pill-info">Envoyé</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="ai-card">
+    <div class="ai-badge">${I.wand}Comment ça marche</div>
+    <div class="section-title" style="margin-bottom:14px;">De la conversation au document</div>
+    ${aiRow('1','Vous décrivez le besoin à l’Assistant IA — ex. « fais-moi une facture proforma pour Dell Technologies »','var(--indigo)')}
+    ${aiRow('2','Elara remplit le modèle Word actif avec les données réelles de l’entreprise','var(--indigo)')}
+    ${aiRow('3','Le document est prêt à relire, télécharger ou envoyer directement','var(--indigo)')}
+  </div>
+</div>
+
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+    <div><div class="section-title">Modèles Word</div><div class="section-sub">Emplacement unique de mise à jour — tout changement s’applique immédiatement aux prochaines générations.</div></div>
+  </div>
+  <div style="border:1.5px dashed var(--line);border-radius:var(--radius);padding:22px;text-align:center;margin:8px 0 20px;background:var(--paper);">
+    <div style="font-size:13.5px;font-weight:700;margin-bottom:4px;font-family:var(--font-heading);">Glissez-déposez un fichier .docx ici</div>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">ou remplacez un modèle existant ci-dessous</div>
+    <button class="btn btn-primary teal" style="margin:0 auto;">Importer un modèle Word (.docx)</button>
+  </div>
+  <table class="tbl">
+    <thead><tr><th>Modèle</th><th>Type de document</th><th>Dernière mise à jour</th><th>Statut</th><th></th></tr></thead>
+    <tbody>
+      <tr><td class="name-cell">Facture_Standard.docx</td><td>Factures & devis</td><td>12 août 2026</td><td><span class="pill pill-success">Actif</span></td><td><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Remplacer</button></td></tr>
+      <tr><td class="name-cell">Lettre_Relance.docx</td><td>Relances clients</td><td>3 juil. 2026</td><td><span class="pill pill-success">Actif</span></td><td><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Remplacer</button></td></tr>
+      <tr><td class="name-cell">Rapport_Mensuel.docx</td><td>Rapports de gestion</td><td>28 juin 2026</td><td><span class="pill pill-success">Actif</span></td><td><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Remplacer</button></td></tr>
+      <tr><td class="name-cell">Attestation.docx</td><td>Attestations diverses</td><td>15 mai 2026</td><td><span class="pill pill-neutral">Verrouillé · Plan Pro</span></td><td></td></tr>
+    </tbody>
+  </table>
+</div>
+</section>`;
+
+/* ================= 8. UTILISATEURS & RÔLES ================= */
+canvas.innerHTML += `<section class="view" id="v-users">
+${topbar('Gouvernance','Utilisateurs & rôles','Gestion des accès de l’espace OrbitTech Services — plan Business requis au-delà de 3 utilisateurs.',
+  `<button class="btn btn-ghost">Rôles personnalisés</button><button class="btn btn-primary teal">Inviter un utilisateur</button>`)}
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Utilisateurs actifs</div><div class="kpi-value">2 <span style="font-size:13px;color:var(--text-dim);font-weight:500;">/ 3 inclus</span></div></div>
+  <div class="card"><div class="kpi-label">Invitations en attente</div><div class="kpi-value">1</div></div>
+  <div class="card"><div class="kpi-label">Rôles définis</div><div class="kpi-value">4</div></div>
+  <div class="card"><div class="kpi-label">Dernière connexion</div><div class="kpi-value" style="font-size:18px;">Aujourd’hui, 08:14</div></div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <div class="section-title">Membres de l’équipe</div>
+  <table class="tbl">
+    <thead><tr><th>Utilisateur</th><th>Rôle</th><th>Statut</th><th>Dernière activité</th></tr></thead>
+    <tbody>
+      <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--blue-bg);color:var(--indigo-deep);font-size:11px;font-weight:700;">AB</div><div><div class="name-cell">Aïcha Belinga</div><div style="font-size:11.5px;color:var(--text-dim);">aicha@orbittech.cm</div></div></td><td><span class="pill pill-info">Propriétaire</span></td><td><span class="pill pill-success">Actif</span></td><td>Aujourd’hui, 08:14</td></tr>
+      <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--green-bg);color:var(--green);font-size:11px;font-weight:700;">JT</div><div><div class="name-cell">Jean Tchoumi</div><div style="font-size:11.5px;color:var(--text-dim);">jean.tchoumi@orbittech.cm</div></div></td><td><span class="pill pill-neutral">Comptable</span></td><td><span class="pill pill-success">Actif</span></td><td>Hier, 17:40</td></tr>
+      <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;">EN</div><div><div class="name-cell">Éric Ngono</div><div style="font-size:11.5px;color:var(--text-dim);">eric.ngono@orbittech.cm</div></div></td><td><span class="pill pill-neutral">Commercial</span></td><td><span class="pill pill-warning">Invitation envoyée</span></td><td>—</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <div class="section-title">Permissions par rôle</div>
+  <div class="section-sub">Contrôle fin de l’accès aux modules et actions sensibles</div>
+  <table class="tbl">
+    <thead><tr><th>Module / action</th><th>Propriétaire</th><th>Comptable</th><th>Commercial</th><th>Lecture seule</th></tr></thead>
+    <tbody>
+      ${['Tableau de bord & rapports','CFO — trésorerie & marges','Valider et archiver un document','Clients & fournisseurs — relances','Gérer les utilisateurs et rôles'].map((m,i)=>{
+        const perms = [[1,1,1,1],[1,1,0,1],[1,1,0,0],[1,0,1,1],[1,0,0,0]][i];
+        return `<tr><td class="name-cell">${m}</td>${perms.map(p=>`<td>${p?'<span style="color:var(--teal-deep);">✓</span>':'<span style="color:var(--line);">—</span>'}</td>`).join('')}</tr>`;
+      }).join('')}
+    </tbody>
+  </table>
+</div>
+</section>`;
+
+/* ================= 9. PARAMÈTRES & ABONNEMENT ================= */
+canvas.innerHTML += `<section class="view" id="v-settings">
+${topbar('Configuration','Paramètres & abonnement','Configuration de l’espace OrbitTech Services.',
+  `<button class="btn btn-ghost">Clés API</button><button class="btn btn-primary teal">Ajouter une intégration</button>`)}
+
+<div class="card" style="margin-bottom:20px;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
+    <div><div class="section-title">Utilisation du plan Starter</div><div class="section-sub">Cycle en cours · renouvellement le 30 septembre 2026</div></div>
+    <span class="pill pill-success">Actif</span>
+  </div>
+  <div class="grid g4">
+    ${usageBar('Utilisateurs','2/3',67,'#1A4A3C')}
+    ${usageBar('Documents','340/500',68,'#A9761F')}
+    ${usageBar('Questions posées','812/1000',81,'#1A4A3C')}
+    ${usageBar('Stockage','1,3/2 Go',65,'#C06A2C')}
+  </div>
+</div>
+
+<div class="section-title" style="margin-bottom:14px;">Comparer les paliers</div>
+<div class="grid g4" style="margin-bottom:24px;">
+  ${[
+    ['Freemium','0 F',['Business Scanner limité','Rapport mensuel ponctuel','Assistant restreint'],false,'Changer de plan'],
+    ['Starter','9 900 F/mois',['Business Scanner illimité','Mémoire Entreprise','CFO de base'],true,'Plan actif'],
+    ['Pro','24 900 F/mois',['Commercial','Import WhatsApp','Automatisations limitées'],false,'Changer de plan'],
+    ['Business','54 900 F/mois',['Opérations & agents avancés','Intégrations API','Multi-utilisateurs'],false,'Changer de plan'],
+  ].map(([name,price,feats,active,cta])=>`
+    <div class="card" style="${active?'border:1.6px solid var(--indigo);':''}">
+      ${active?'<span class="pill pill-info" style="margin-bottom:10px;">Plan actuel</span>':''}
+      <div style="font-family:var(--font-heading);font-weight:700;font-size:17px;">${name}</div>
+      <div style="font-size:20px;font-weight:700;margin:6px 0 14px;font-family:var(--font-heading);">${price}</div>
+      <div style="font-size:12px;color:var(--text-dim);line-height:2;margin-bottom:16px;">${feats.map(f=>'✓ '+f).join('<br>')}</div>
+      <button class="btn ${active?'btn-ghost':'btn-primary teal'}" style="width:100%;justify-content:center;" ${active?'disabled':''}>${cta}</button>
+    </div>`).join('')}
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="section-title">Modules activés</div>
+    ${['Business Scanner','CFO','Commercial — Plan Pro','Opérations — Plan Business'].map((m,i)=>`
+      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">${m}</span>${i<2?'<span class="pill pill-success">Actif</span>':'<span class="pill pill-neutral">Verrouillé</span>'}</div>`).join('')}
+  </div>
+  <div class="card">
+    <div class="section-title">Intégrations</div>
+    ${['WhatsApp Business','Orange Money / MTN MoMo','Logiciel de comptabilité','API Elara'].map((m,i)=>`
+      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">${m}</span>${i<2?'<span class="pill pill-success">Connecté</span>':'<button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Connecter</button>'}</div>`).join('')}
+  </div>
+</div>
+</section>`;
+
+/* ================= 9bis. EMPLOYÉS ================= */
+canvas.innerHTML += `<section class="view" id="v-team">
+${topbar('Ressources humaines','Employés','L’annuaire de votre équipe — distinct des comptes de connexion à la plateforme (voir Utilisateurs & rôles).',
+  `<button class="btn btn-ghost">Exporter la liste</button><button class="btn btn-primary teal">Ajouter un employé</button>`)}
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Employés actifs</div><div class="kpi-value">12</div><div class="kpi-delta up">↑ 2 ce trimestre</div></div>
+  <div class="card"><div class="kpi-label">Services</div><div class="kpi-value">4</div><div class="kpi-delta flat">Direction, Finance, Commercial, Opérations</div></div>
+  <div class="card"><div class="kpi-label">Ancienneté moyenne</div><div class="kpi-value">2,3 ans</div><div class="kpi-delta flat">Stable</div></div>
+  <div class="card"><div class="kpi-label">Postes vacants</div><div class="kpi-value">1</div><div class="kpi-delta flat">Commercial terrain</div></div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="section-title">Annuaire</div>
+    <table class="tbl">
+      <thead><tr><th>Employé</th><th>Poste</th><th>Service</th><th>Entrée</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--blue-bg);color:var(--indigo-deep);font-size:11px;font-weight:700;">AB</div><span class="name-cell">Aïcha Belinga</span></td><td>Directrice générale</td><td>Direction</td><td class="mono" style="font-size:12px;">03/2021</td><td><span class="pill pill-success">Actif</span></td></tr>
+        <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--green-bg);color:var(--green);font-size:11px;font-weight:700;">JT</div><span class="name-cell">Jean Tchoumi</span></td><td>Comptable senior</td><td>Finance</td><td class="mono" style="font-size:12px;">09/2022</td><td><span class="pill pill-success">Actif</span></td></tr>
+        <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;">EN</div><span class="name-cell">Éric Ngono</span></td><td>Commercial terrain</td><td>Commercial</td><td class="mono" style="font-size:12px;">01/2024</td><td><span class="pill pill-success">Actif</span></td></tr>
+        <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--blue-bg);color:var(--indigo-deep);font-size:11px;font-weight:700;">ME</div><span class="name-cell">Marlène Ekedi</span></td><td>Assistante administrative</td><td>Administration</td><td class="mono" style="font-size:12px;">06/2023</td><td><span class="pill pill-success">Actif</span></td></tr>
+        <tr><td style="display:flex;align-items:center;gap:10px;"><div class="tag-icon" style="width:30px;height:30px;background:var(--red-bg);color:var(--red);font-size:11px;font-weight:700;">PA</div><span class="name-cell">Paul Assamba</span></td><td>Technicien support</td><td>Opérations</td><td class="mono" style="font-size:12px;">11/2023</td><td><span class="pill pill-warning">Congé</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Répartition par service</div>
+      ${row('Commercial — 4 employés',34,'#A9761F')}<div style="height:10px;"></div>
+      ${row('Finance — 3 employés',25,'#1A4A3C')}<div style="height:10px;"></div>
+      ${row('Opérations — 3 employés',25,'#C06A2C')}<div style="height:10px;"></div>
+      ${row('Direction & Administration — 2 employés',16,'#6B6858')}
+    </div>
+    <div class="ai-card">
+      <div class="ai-badge">${I.wand}Observation Elara</div>
+      ${aiRow('Charge','Service Commercial : 4 personnes pour 34 clients actifs, au-dessus de la moyenne du secteur','var(--amber)')}
+    </div>
+  </div>
+</div>
+</section>`;
+
+/* ================= 9ter. CONCEPTEUR DE WORKFLOWS IA ================= */
+canvas.innerHTML += `<section class="view" id="v-workflows">
+${topbar('Automatisation','Concepteur de workflows','Décrivez un processus en langage naturel — Elara le transforme en workflow automatisé, sans code.',
+  `<button class="btn btn-ghost">Modèles de workflows</button><button class="btn btn-primary teal">Nouveau workflow</button>`)}
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Workflows actifs</div><div class="kpi-value">5</div><div class="kpi-delta up">↑ 1 ce mois</div></div>
+  <div class="card"><div class="kpi-label">Exécutions (mois)</div><div class="kpi-value">312</div><div class="kpi-delta up">↑ 18%</div></div>
+  <div class="card"><div class="kpi-label">Temps estimé gagné</div><div class="kpi-value">14 h<span style="font-size:13px;color:var(--text-dim);font-weight:500;">/mois</span></div><div class="kpi-delta up">↑ 2 h vs mois dernier</div></div>
+  <div class="card"><div class="kpi-label">Taux de succès</div><div class="kpi-value">97%</div><div class="kpi-delta flat">Stable</div></div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <div class="section-title">Décrire un nouveau workflow</div>
+  <div class="section-sub">Exemple : « Quand une facture dépasse 30 jours de retard, envoie une relance WhatsApp et notifie le comptable »</div>
+  <div style="display:flex;gap:10px;margin-top:14px;">
+    <input class="field" placeholder="Décrivez le processus à automatiser…" style="flex:1;">
+    <button class="btn btn-primary teal">${I.wand} Générer le workflow</button>
+  </div>
+  <div class="chip-row" style="margin-top:12px;">
+    ${['Relancer les factures en retard de +30 jours','Envoyer un rapport le 1er de chaque mois','Alerter si une dépense dépasse 500 000 F'].map(t=>`<span class="chip" style="background:#fff;border:1px solid var(--line);color:var(--text);">${t}</span>`).join('')}
+  </div>
+</div>
+
+<div class="section-title" style="margin-bottom:12px;">Workflows actifs</div>
+${[
+  {name:'Relance automatique des factures en retard',runs:'128 exécutions ce mois',status:'Actif',trigger:'Facture > 30 j de retard',condition:'Aucun paiement partiel',action:'Envoyer relance WhatsApp + email'},
+  {name:'Rapport mensuel automatique',runs:'1 exécution ce mois',status:'Actif',trigger:'1er du mois, 08:00',condition:'—',action:'Générer et envoyer le Rapport IA au dirigeant'},
+  {name:'Alerte dépense anormale',runs:'6 exécutions ce mois',status:'Actif',trigger:'Nouvelle dépense enregistrée',condition:'Montant > 500 000 F ou +40% vs moyenne',action:'Notifier le CFO IA et créer une anomalie'},
+  {name:'Onboarding nouveau client',runs:'Non activé',status:'Brouillon',trigger:'Nouveau client créé',condition:'—',action:'Créer le dossier documents et envoyer l’email de bienvenue'},
+].map(w=>`
+  <div class="card" style="margin-bottom:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;">
+      <div><div style="font-weight:700;font-size:14px;margin-bottom:2px;font-family:var(--font-heading);">${w.name}</div><div style="font-size:11.5px;color:var(--text-dim);">${w.runs}</div></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+        <span class="pill ${w.status==='Actif'?'pill-success':'pill-neutral'}">${w.status}</span>
+        <button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">${I.wand} Modifier avec l’IA</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;">
+      <span class="pill pill-info">${w.trigger}</span>
+      <span style="color:var(--text-faint);font-size:13px;">→</span>
+      <span class="pill pill-warning">${w.condition}</span>
+      <span style="color:var(--text-faint);font-size:13px;">→</span>
+      <span class="pill pill-success">${w.action}</span>
+    </div>
+  </div>`).join('')}
+
+<div class="ai-card">
+  <div class="ai-badge">${I.wand}Suggestion Elara</div>
+  ${aiRow('Nouveau workflow','8 relances envoyées manuellement ce mois pour le même motif — Elara peut créer un workflow automatique équivalent','var(--indigo)')}
+</div>
+</section>`;
+
+/* ================= 9B. AGENTS & EXTENSIONS ================= */
+canvas.innerHTML += `<section class="view" id="v-agents">
+${topbar('Écosystème IA','Agents & Extensions','CFO IA est le premier agent connecté à votre Mémoire d’entreprise. Chaque agent suivant — interne, partenaire ou tiers — rejoint la même plateforme, sans jamais dupliquer vos données.',
+  `<button class="btn btn-ghost">Voir un exemple de manifeste</button><button class="btn btn-primary teal">Proposer un agent</button>`)}
+
+<div class="section-title">Agent actif</div>
+<div class="section-sub">Raisonne exclusivement sur les données réelles de votre entreprise</div>
+<div class="grid g3" style="margin-bottom:24px;">
+  ${[{
+    icon:I.cfo, name:'CFO IA', status:'Actif', cls:'pill-success',
+    desc:'Trésorerie, factures, rapprochement bancaire et Mobile Money, TVA et projections à 30 jours.',
+    meta:'Validation humaine requise avant tout envoi'
+  }].map(a=>`
+    <div class="card rm-card">
+      <span class="pill ${a.cls} rm-status">${a.status}</span>
+      <div style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--gold-bg);color:var(--teal-deep);margin-bottom:10px;">${a.icon}</div>
+      <div class="rm-name">${a.name}</div>
+      <p style="font-size:12.5px;color:var(--text-dim);line-height:1.7;margin:2px 0 12px;">${a.desc}</p>
+      <div style="font-size:11.5px;color:var(--text-faint);">${a.meta}</div>
+    </div>`).join('')}
+</div>
+
+<div class="section-title">Prochains agents (même socle, même registre)</div>
+<div class="section-sub">Roadmap déjà planifiée — activés progressivement sans reconstruction de la plateforme</div>
+<div class="grid g3" style="margin-bottom:24px;">
+  ${[
+    {icon:I.commercial, name:'Commercial IA', status:'En cours · V2', cls:'pill-warning', desc:'Prospects, pipeline, relances et prévisions commerciales à partir de WhatsApp et de la Mémoire d’entreprise.'},
+    {icon:I.ops, name:'COO IA', status:'Planifié · V3', cls:'pill-neutral', desc:'Stocks, fournisseurs, achats et anomalies opérationnelles.'},
+    {icon:I.flow, name:'Agents d’automatisation', status:'Planifié · V4', cls:'pill-neutral', desc:'Workflows complets de bout en bout, toujours avec validation humaine sur les actions sensibles.'},
+  ].map(a=>`
+    <div class="card rm-card">
+      <span class="pill ${a.cls} rm-status">${a.status}</span>
+      <div style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--paper);color:var(--ink-3);margin-bottom:10px;">${a.icon}</div>
+      <div class="rm-name">${a.name}</div>
+      <p style="font-size:12.5px;color:var(--text-dim);line-height:1.7;margin:2px 0;">${a.desc}</p>
+    </div>`).join('')}
+</div>
+
+<div class="section-title">Extensions futures</div>
+<div class="section-sub">Réservées dans l’architecture (Partie X / XXXIV) — hors périmètre du MVP actuel</div>
+<div class="grid g3" style="margin-bottom:24px;">
+  ${['HR IA','Legal IA','Procurement IA'].map(name=>`
+    <div class="card" style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;">
+      <span class="pill pill-neutral">Extension future</span>
+      <div style="font-family:var(--font-heading);font-size:15px;font-weight:700;">${name}</div>
+      <button class="btn btn-ghost" style="padding:7px 14px;font-size:12px;">Rejoindre la liste d’attente</button>
+    </div>`).join('')}
+</div>
+
+<div class="card" style="margin-bottom:24px;">
+  <div class="section-title">Comment un agent rejoint Elara</div>
+  <div class="section-sub">Le même cycle s’applique à un agent interne, partenaire ou tiers</div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    ${['Proposition','Sandbox','Gouvernance','Publication limitée','Publication générale'].map((step,i,arr)=>`
+      <span class="pill pill-info">${step}</span>${i<arr.length-1?'<span style="color:var(--text-faint);font-size:13px;">→</span>':''}
+    `).join('')}
+  </div>
+</div>
+
+<div class="grid g3" style="margin-bottom:24px;">
+  ${[
+    {title:'Agents internes', badge:'Cycle standard', desc:'Développés par l’équipe produit Elara — Commercial IA, COO IA, HR IA, Legal IA, Procurement IA.'},
+    {title:'Agents partenaires', badge:'Revue de sécurité renforcée', desc:'Cabinet comptable, assureur ou institution financière branchés via un manifeste scopé à leur domaine.'},
+    {title:'Agents tiers (marketplace, long terme)', badge:'Certification requise', desc:'Éditeurs sectoriels indépendants (BTP, santé, restauration…), soumis au sandbox et au partage de revenu.'},
+  ].map(c=>`
+    <div class="card">
+      <div class="section-title" style="font-size:14px;">${c.title}</div>
+      <span class="pill pill-neutral" style="margin-bottom:10px;">${c.badge}</span>
+      <p style="font-size:12.5px;color:var(--text-dim);line-height:1.7;margin:8px 0 0;">${c.desc}</p>
+    </div>`).join('')}
+</div>
+
+<div class="ai-card">
+  <div class="ai-badge">${I.puzzle}Exemple de manifeste d’agent</div>
+  <pre style="margin:0;font-family:monospace;font-size:12px;line-height:1.85;color:var(--ink-2);background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:16px 18px;overflow-x:auto;">{
+  "agent_id": "cfo-ia",
+  "domaine": "finance",
+  "editeur": "interne",
+  "version": "1.0",
+  "permissions_business_memory": ["factures:lire", "paiements:lire", "tresorerie:lire"],
+  "actions_exposees": ["generer_rapport", "preparer_relance"],
+  "validation_humaine": "requise avant tout envoi",
+  "modele_ia": "routing multi-fournisseurs (AI Gateway)",
+  "quotas": "selon palier tarifaire du tenant"
+}</pre>
+  <div style="font-size:11.5px;color:var(--text-dim);margin-top:10px;">Ce même format sera utilisé pour Commercial IA, COO IA, puis pour tout futur agent partenaire ou tiers — c’est la seule porte d’entrée dans la plateforme.</div>
+</div>
+</section>`;
+
+/* ================= 10. ADMIN / SANTÉ PLATEFORME ================= */
+canvas.innerHTML += `<section class="view" id="v-admin">
+${topbar('Console admin · multi-tenant','Santé de la plateforme','Observabilité tous plans confondus — mis à jour il y a 2 minutes.',
+  `<button class="btn btn-ghost">30 derniers jours</button><button class="btn btn-primary teal">Voir les traces</button>`)}
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Uptime plateforme</div><div class="kpi-value">99.97%</div><div class="kpi-delta up">↑ 0,02 pt vs 7 j</div></div>
+  <div class="card"><div class="kpi-label">Latence API (P95)</div><div class="kpi-value">312 ms</div><div class="kpi-delta down">↑ 18 ms vs 7 j</div></div>
+  <div class="card"><div class="kpi-label">Taux d’erreur</div><div class="kpi-value">0.42%</div><div class="kpi-delta up">↓ 0,08 pt vs 7 j</div></div>
+  <div class="card"><div class="kpi-label">Coût moyen / tenant</div><div class="kpi-value">1 840 F</div><div class="kpi-delta down">↑ 6% vs mois dernier</div></div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="section-title">Tenants par palier d’abonnement</div>
+    <div class="section-sub">412 tenants actifs · MRR total 6,4 M F</div>
+    ${row('Freemium · 218 tenants',24,'#9C9986')}<div style="height:12px;"></div>
+    ${row('Starter · 132 tenants',52,'#1A4A3C')}<div style="height:12px;"></div>
+    ${row('Pro · 47 tenants',72,'#A9761F')}<div style="height:12px;"></div>
+    ${row('Business · 15 tenants',88,'#1A4A3C')}
+  </div>
+  <div class="ai-card">
+    <div class="ai-badge">${I.wand}Alertes système actives</div>
+    ${aiRow('Critique','Pic de consommation — tenant Distribution Boissons Kamga (+180%)','var(--red)')}
+    ${aiRow('Avertissement','Précision OCR en baisse — reçus manuscrits WhatsApp','var(--amber)')}
+    ${aiRow('Surveillance','Latence élevée — région Douala, P95 à 640 ms','var(--indigo)')}
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">Santé par tenant (échantillon)</div>
+  <table class="tbl">
+    <thead><tr><th>Tenant</th><th>Plan</th><th>Health score</th><th>Coût moyen (mois)</th><th>Alerte</th></tr></thead>
+    <tbody>
+      <tr><td class="name-cell">OrbitTech Services</td><td><span class="pill pill-info">Starter</span></td><td>78</td><td class="mono">1 240 F</td><td>—</td></tr>
+      <tr><td class="name-cell">Distribution Boissons Kamga</td><td><span class="pill pill-neutral">Pro</span></td><td>64</td><td class="mono">5 920 F</td><td><span class="pill pill-danger">Pic de consommation</span></td></tr>
+      <tr><td class="name-cell">Groupe Ngassa & Fils</td><td><span class="pill pill-neutral">Business</span></td><td>88</td><td class="mono">3 110 F</td><td>—</td></tr>
+      <tr><td class="name-cell">Collège Notre-Dame</td><td><span class="pill pill-neutral">Freemium</span></td><td>55</td><td class="mono">210 F</td><td><span class="pill pill-warning">Compte inactif 12 j</span></td></tr>
+    </tbody>
+  </table>
+</div>
+</section>`;
+
+/* ================= 11. MOBILE ================= */
+canvas.innerHTML += `<section class="view" id="v-mobile">
+${topbar('Surface mobile','Aperçu mobile — Accueil','Même mémoire d’entreprise, pensée pour un usage sur le terrain.','')}
+<div style="display:flex;justify-content:center;">
+<div class="phone"><div class="phone-screen">
+  <div class="phone-status"><span>9:41</span><span>●●● Orange · 4G</span></div>
+  <div class="phone-body" style="flex:1;">
+    <div style="font-size:12px;color:var(--text-dim);margin-top:8px;">OrbitTech Services</div>
+    <div style="font-family:var(--font-heading);font-size:20px;font-weight:700;margin-bottom:14px;">Bonjour, Aïcha 👋</div>
+    <div class="card" style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+      ${ring(78,58)}
+      <div><div style="font-weight:700;font-size:13.5px;font-family:var(--font-heading);">Business Health Score</div><div style="font-size:11.5px;color:var(--text-dim);">Bon état · 3 points à traiter</div></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;">
+      <div class="card" style="flex:1;padding:14px;"><div style="font-size:10.5px;color:var(--text-dim);font-weight:700;font-family:var(--font-heading);text-transform:uppercase;">Trésorerie</div><div style="font-weight:700;font-size:15px;margin-top:4px;" class="mono">1 065 000 F</div></div>
+      <div class="card" style="flex:1;padding:14px;"><div style="font-size:10.5px;color:var(--text-dim);font-weight:700;font-family:var(--font-heading);text-transform:uppercase;">Impayés</div><div style="font-weight:700;font-size:15px;margin-top:4px;color:var(--red);" class="mono">612 000 F</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px;">
+      ${[['Scanner',I.scan],['Mobile Money',I.cfo],['Assistant',I.assistant],['Relancer',I.contacts]].map(([l,ic])=>`
+        <div class="card" style="text-align:center;padding:12px 4px;"><div style="color:var(--indigo);margin-bottom:6px;display:flex;justify-content:center;">${ic}</div><div style="font-size:10px;font-weight:700;font-family:var(--font-heading);">${l}</div></div>`).join('')}
+    </div>
+    <div style="font-weight:700;font-size:13px;margin-bottom:10px;font-family:var(--font-heading);">Paiements à rapprocher</div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding:14px;">
+      <div><div style="font-weight:700;font-size:13.5px;" class="mono">+152 000 F reçu</div><div style="font-size:11px;color:var(--text-dim);">Orange Money · 08:14</div></div>
+      <span class="pill pill-warning">À lier</span>
+    </div>
+    <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:14px;">
+      <div><div style="font-weight:700;font-size:13.5px;" class="mono">+89 000 F reçu</div><div style="font-size:11px;color:var(--text-dim);">MTN MoMo · hier 17:32</div></div>
+      <span class="pill pill-success">Lié</span>
+    </div>
+  </div>
+  <div class="tabbar">
+    <div class="tab-item active">${I.grid}Accueil</div>
+    <div class="tab-item">${I.scan}Scanner</div>
+    <div class="tab-item">${I.assistant}Assistant</div>
+    <div class="tab-item">${I.report}Rapports</div>
+  </div>
+</div></div>
+</div>
+</section>`;
+
+/* ================= 12. ONBOARDING ================= */
+canvas.innerHTML += `<section class="view" id="v-onboarding">
+${topbar('Configuration initiale · étape 3 sur 5','Parlez-nous de votre activité','Elara construit progressivement votre mémoire d’entreprise — vous pourrez toujours compléter ces informations plus tard.','')}
+<div class="onb-wrap">
+  <div class="tab-pill-row">
+    <button class="tab-pill active">Parcours B — nouvelle entreprise</button>
+    <button class="tab-pill">Parcours A — entreprise existante</button>
+  </div>
+  <div class="card">
+    <div class="steps">
+      <div class="step-seg done"></div><div class="step-seg done"></div><div class="step-seg current"></div><div class="step-seg"></div><div class="step-seg"></div>
+    </div>
+    <div class="field-label">Nom de l’entreprise</div>
+    <input class="field" value="Nova Informatique Sarl">
+    <div class="field-label">Secteur d’activité</div>
+    <div class="opt-grid">
+      <div class="opt sel">Services</div><div class="opt">Distribution</div><div class="opt">Commerce</div>
+      <div class="opt">Industrie légère</div><div class="opt">Restauration</div><div class="opt">Santé</div>
+      <div class="opt">Éducation</div><div class="opt">BTP & construction</div><div class="opt">Autre</div>
+    </div>
+    <div class="field-label">Ville principale</div>
+    <input class="field" value="Yaoundé">
+    <div class="divider"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:12.5px;color:var(--text-faint);font-weight:700;cursor:pointer;font-family:var(--font-heading);">Passer cette étape</span>
+      <div style="display:flex;gap:10px;"><button class="btn btn-ghost">Retour</button><button class="btn btn-primary teal">Continuer</button></div>
+    </div>
+  </div>
+</div>
+</section>`;
+
+/* ================= 13. BRAND SYSTEM ================= */
+canvas.innerHTML += `<section class="view" id="v-brand">
+${topbar('Identité visuelle','Système de marque','Le repère graphique commun à toutes les surfaces Elara : marque, couleur, typographie.','')}
+
+<div class="logo-hero" style="margin-bottom:16px;">
+  <div class="brand-lg">
+    <svg width="56" height="48" viewBox="0 0 30 26" fill="none">
+      <path d="M0 13 L6 13 L8.5 3 L12 23 L15.5 8 L18.5 18 L21 13 L30 13" stroke="url(#g2)" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+      <defs><linearGradient id="g2" x1="0" y1="0" x2="30" y2="0"><stop stop-color="#A9761F"/><stop offset="1" stop-color="#1A4A3C"/></linearGradient></defs>
+    </svg>
+    <div><div class="word">Elara</div><div class="tagline">Elara vous comprend, quelle que soit votre façon de travailler.</div></div>
+  </div>
+</div>
+
+<div class="grid g3" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="section-title">Palette</div>
+    <div class="section-sub">4 couleurs de marque + neutres</div>
+    <div class="swatch-row">
+      <div class="swatch" style="background:#0E2A22;"></div>
+      <div class="swatch" style="background:#A9761F;"></div>
+      <div class="swatch" style="background:#1A4A3C;"></div>
+      <div class="swatch" style="background:#C06A2C;"></div>
+      <div class="swatch" style="background:#A23B3B;"></div>
+      <div class="swatch" style="background:#F6F4EE;"></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--text-dim);margin-top:12px;line-height:1.9;">
+      Encre #0E2A22 · Or (sceau) #A9761F — réservé aux moments Elara · Encre secondaire #1A4A3C · Rouille #C06A2C · Brique #A23B3B · Papier #F6F4EE
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">Typographie</div>
+    <div style="font-family:var(--font-heading);font-size:24px;font-weight:700;margin:12px 0 2px;">Tahoma</div>
+    <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;">Titres, chiffres clés, identité marketing</div>
+    <div style="font-family:var(--font-body);font-size:18px;font-weight:700;margin-bottom:2px;">Gill Sans MT</div>
+    <div style="font-size:12px;color:var(--text-dim);">Interface, tableaux, données de gestion</div>
+  </div>
+  <div class="card">
+    <div class="section-title">Signature graphique</div>
+    <div class="section-sub">Le motif d’onde marque les analyses produites par Elara</div>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:14px;">
+      <span class="ai-badge" style="margin:0;">${I.wand}Généré par Elara</span>
+    </div>
+    <div style="margin-top:14px;">${wave}</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">Principe de conception</div>
+  <p style="font-size:13px;color:var(--text-dim);line-height:1.7;max-width:640px;">
+    Les cartes plates à bordure fine portent la donnée brute et vérifiable, comme une écriture de registre.
+    Les cartes à liseré or — le sceau — portent exclusivement les analyses produites par Elara : insight,
+    anomalie, recommandation. Comme un cachet sur un document officiel, l’or n’apparaît que lorsque
+    l’intelligence d’Elara appose sa lecture, afin que l’utilisateur distingue toujours, d’un coup d’œil,
+    ce qui vient de ses documents et ce que l’IA en déduit.
+  </p>
+</div>
+</section>`;
+
+/* ================= 14. COMMERCIAL IA (V2 — preview) ================= */
+canvas.innerHTML += `<section class="view" id="v-commercial">
+${topbar('Module · Commercial IA','Commercial IA','CRM léger, relances automatiques et suivi des opportunités — connecté à WhatsApp Business.',
+  `<button class="btn btn-primary teal" disabled style="opacity:.55;cursor:not-allowed;">Activer avec le plan Pro</button>`)}
+
+<div class="preview-banner">
+  <span class="dot"></span>
+  <div><strong>Aperçu — module V2, roadmap « Commercial Intelligence »</strong><br><span class="muted">Cet écran illustre le fonctionnement cible du module. Il s’active avec le plan Pro (Partie VI du blueprint).</span></div>
+</div>
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Opportunités ouvertes</div><div class="kpi-value">18</div><div class="kpi-delta up">↑ 5 cette semaine</div></div>
+  <div class="card"><div class="kpi-label">Pipeline estimé</div><div class="kpi-value">2 340 000 F</div><div class="kpi-delta flat">Toutes étapes</div></div>
+  <div class="card"><div class="kpi-label">Relances envoyées (WhatsApp)</div><div class="kpi-value">42</div><div class="kpi-delta up">68% de réponse</div></div>
+  <div class="card"><div class="kpi-label">Commandes via WhatsApp</div><div class="kpi-value">126 <span style="font-size:13px;color:var(--text-dim);font-weight:500;">ce mois</span></div><div class="kpi-delta up">↑ 21%</div></div>
+</div>
+
+<div class="grid g3" style="margin-bottom:16px;">
+  ${[
+    ['Prospection',[['Hôtel Le Sahel','185 000 F'],['Radio Cité FM','96 000 F'],['Assurance Providence','54 000 F']],'#9C9986'],
+    ['Négociation',[['Cabinet Fotso Consulting','412 000 F'],['Banque du Littoral','680 000 F']],'#1A4A3C'],
+    ['Gagné ce mois',[['Collège Notre-Dame','230 000 F'],['Groupe Ngassa & Fils','310 000 F']],'#A9761F'],
+  ].map(([col,items,color])=>`
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:${color};"></span>
+        <span class="section-title" style="margin:0;">${col}</span>
+      </div>
+      ${items.map(([n,v])=>`<div class="list-row"><span class="name-cell" style="font-weight:600;">${n}</span><span class="mono">${v}</span></div>`).join('')}
+    </div>`).join('')}
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="section-title">Fil WhatsApp Business — événements convertis</div>
+    <div class="section-sub">Chaque message devient une entrée structurée dans la Business Memory</div>
+    ${listRow('“Bonjour, notre serveur de messagerie est en panne depuis ce matin”','Clinique Excellence Santé · converti en ticket #T-0891','185 000 F')}
+    ${listRow('“Je peux payer vendredi ?”','Collège Notre-Dame · relance planifiée automatiquement','—')}
+    ${listRow('Devis matériel signé reçu par photo','Cabinet Fotso Consulting · en attente de validation','412 000 F')}
+  </div>
+  <div class="ai-card">
+    <div class="ai-badge">${I.wand}Suggestions Commercial IA</div>
+    ${aiRow('Relance','Radio Cité FM — devis envoyé il y a 6 j sans réponse','var(--amber)')}
+    ${aiRow('Opportunité','Banque du Littoral — volume de tickets en hausse, proposer un forfait infogérance','var(--indigo)')}
+    ${aiRow('Risque','Hôtel Le Sahel — 2 relances sans réponse, risque de perte','var(--red)')}
+  </div>
+</div>
+</section>`;
+
+/* ================= 15. OPÉRATIONS IA (V3 — preview) ================= */
+canvas.innerHTML += `<section class="view" id="v-ops">
+${topbar('Module · Opérations IA','Opérations IA','Stocks, achats et fournisseurs — recommandations de réapprovisionnement fondées sur la Business Memory.',
+  `<button class="btn btn-primary teal" disabled style="opacity:.55;cursor:not-allowed;">Activer avec le plan Business</button>`)}
+
+<div class="preview-banner">
+  <span class="dot"></span>
+  <div><strong>Aperçu — module V3, roadmap « Operations Intelligence »</strong><br><span class="muted">COO IA : stocks, achats, fournisseurs. S’appuie sur le même socle (Business Memory, Identity, Event Bus, AI Platform) que CFO IA et Commercial IA.</span></div>
+</div>
+
+<div class="grid g4" style="margin-bottom:16px;">
+  <div class="card"><div class="kpi-label">Références en stock</div><div class="kpi-value">312</div><div class="kpi-delta flat">18 catégories</div></div>
+  <div class="card"><div class="kpi-label">Ruptures fréquentes</div><div class="kpi-value" style="color:var(--red);">3</div><div class="kpi-delta down">Sur 30 jours</div></div>
+  <div class="card"><div class="kpi-label">Fournisseurs actifs</div><div class="kpi-value">9</div><div class="kpi-delta up">↑ 1 ce mois</div></div>
+  <div class="card"><div class="kpi-label">Délai moyen livraison</div><div class="kpi-value">4,2 j</div><div class="kpi-delta flat">Stable</div></div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="section-title">Stock par référence</div>
+    <table class="tbl">
+      <thead><tr><th>Référence</th><th>Stock</th><th>Seuil</th><th>Statut</th></tr></thead>
+      <tbody>
+        <tr><td class="name-cell">Licences Microsoft 365 (postes)</td><td class="mono">14</td><td class="mono">25</td><td><span class="pill pill-danger">Sous le seuil</span></td></tr>
+        <tr><td class="name-cell">Laptops Dell reconditionnés</td><td class="mono">88</td><td class="mono">40</td><td><span class="pill pill-success">OK</span></td></tr>
+        <tr><td class="name-cell">Cartouches toner HP</td><td class="mono">21</td><td class="mono">30</td><td><span class="pill pill-warning">À surveiller</span></td></tr>
+        <tr><td class="name-cell">Switch réseau 24 ports</td><td class="mono">6</td><td class="mono">20</td><td><span class="pill pill-danger">Sous le seuil</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="ai-card">
+    <div class="ai-badge">${I.wand}Recommandations de réapprovisionnement</div>
+    ${aiRow('Urgent','Licences Microsoft 365 : renouveler 60 postes auprès de Microsoft CSP Partner','var(--red)')}
+    ${aiRow('Anticipé','Switch réseau 24 ports : rupture prévue sous 5 j au rythme actuel','var(--amber)')}
+    ${aiRow('Fournisseur','Dell Technologies Afrique : délai en hausse (4,2 j vs 2,8 j habituel)','var(--indigo)')}
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">Fournisseurs</div>
+  <table class="tbl">
+    <thead><tr><th>Fournisseur</th><th>Catégorie</th><th>Délai moyen</th><th>Dette en cours</th><th>Statut</th></tr></thead>
+    <tbody>
+      <tr><td class="name-cell">Dell Technologies Afrique</td><td>Matériel informatique</td><td class="mono">4,2 j</td><td class="mono">248 000 F</td><td><span class="pill pill-info">Échéance ce mois</span></td></tr>
+      <tr><td class="name-cell">Microsoft CSP Partner</td><td>Licences logicielles</td><td class="mono">6,8 j</td><td class="mono">0 F</td><td><span class="pill pill-success">À jour</span></td></tr>
+      <tr><td class="name-cell">Orange Business Cameroun</td><td>Connectivité & réseau</td><td class="mono">2,1 j</td><td class="mono">54 000 F</td><td><span class="pill pill-success">À jour</span></td></tr>
+    </tbody>
+  </table>
+</div>
+</section>`;
+
+/* ================= 16. SÉCURITÉ & GOUVERNANCE IA ================= */
+canvas.innerHTML += `<section class="view" id="v-security">
+${topbar('Console admin · confiance & conformité','Sécurité & gouvernance','Les principes structurants qui encadrent chaque action de la plateforme, du chiffrement à la validation humaine.','')}
+
+<div class="grid g3" style="margin-bottom:16px;">
+  <div class="card">
+    <div class="tag-icon" style="background:var(--blue-bg);color:var(--indigo-deep);margin-bottom:12px;">${I.shield}</div>
+    <div class="section-title">Security by design</div>
+    <ul style="padding-left:18px;margin:12px 0 0;font-size:13px;line-height:1.9;color:var(--text-dim);">
+      <li>Chiffrement des données au repos et en transit</li>
+      <li>Authentification multi-facteurs (MFA) et RBAC</li>
+      <li>Isolation stricte des tenants (tenant_id + Row-Level Security)</li>
+      <li>Secrets centralisés, journaux d’audit, sauvegardes, plan de reprise</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="tag-icon" style="background:var(--green-bg);color:var(--green);margin-bottom:12px;">${I.users}</div>
+    <div class="section-title">Human-in-the-loop</div>
+    <p style="font-size:13px;color:var(--text-dim);line-height:1.8;margin:12px 0 0;">
+      Aucune action sensible — envoi de message, génération et envoi de facture, modification d’un statut
+      financier — n’est exécutée automatiquement sans validation explicite, dès le MVP.
+    </p>
+  </div>
+  <div class="card">
+    <div class="tag-icon" style="background:var(--amber-bg);color:var(--amber);margin-bottom:12px;">${I.wand}</div>
+    <div class="section-title">AI Governance</div>
+    <ul style="padding-left:18px;margin:12px 0 0;font-size:13px;line-height:1.9;color:var(--text-dim);">
+      <li>Grounding systématique sur les données réelles, avec citation des sources</li>
+      <li>Score de confiance associé aux réponses et recommandations</li>
+      <li>Versioning des prompts, des modèles et des jeux d’évaluation</li>
+      <li>Audit trail dédié aux actions réalisées par l’IA</li>
+    </ul>
+  </div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="section-title">Actions IA en attente de validation</div>
+    <div class="section-sub">Exemple du garde-fou « human-in-the-loop » appliqué à une action sensible</div>
+    <div class="validate-row">
+      <div><div class="name-cell">Envoyer la relance à Clinique Excellence Santé</div><div class="meta">Proposée par Commercial IA · confiance 92%</div></div>
+      <div style="display:flex;gap:8px;"><button class="btn btn-ghost" style="padding:6px 12px;">Modifier</button><button class="btn btn-primary teal" style="padding:6px 14px;">Valider</button></div>
+    </div>
+    <div class="validate-row">
+      <div><div class="name-cell">Archiver le reçu matériel informatique du 04/09</div><div class="meta">Proposée par Business Scanner · confiance 97%</div></div>
+      <div style="display:flex;gap:8px;"><button class="btn btn-ghost" style="padding:6px 12px;">Modifier</button><button class="btn btn-primary teal" style="padding:6px 14px;">Valider</button></div>
+    </div>
+    <div class="validate-row" style="margin-bottom:0;">
+      <div><div class="name-cell">Marquer la facture Dell Technologies comme doublon</div><div class="meta">Proposée par CFO IA · confiance 81%</div></div>
+      <div style="display:flex;gap:8px;"><button class="btn btn-ghost" style="padding:6px 12px;">Modifier</button><button class="btn btn-primary teal" style="padding:6px 14px;">Valider</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">Journal d’audit — actions IA</div>
+    <table class="tbl">
+      <thead><tr><th>Action</th><th>Agent</th><th>Validé par</th><th>Horodatage</th></tr></thead>
+      <tbody>
+        <tr><td class="name-cell">Facture #2026-0362 générée</td><td><span class="pill pill-info">CFO IA</span></td><td>Aïcha Belinga</td><td class="mono">08:02</td></tr>
+        <tr><td class="name-cell">Relance envoyée — La Savane</td><td><span class="pill pill-neutral">Commercial IA</span></td><td>Jean Tchoumi</td><td class="mono">Hier, 17:40</td></tr>
+        <tr><td class="name-cell">Reçu matériel informatique archivé</td><td><span class="pill pill-neutral">Business Scanner</span></td><td>Aïcha Belinga</td><td class="mono">Hier, 09:15</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</section>`;
+
+/* ================= 17. ARCHITECTURE TECHNIQUE ================= */
+canvas.innerHTML += `<section class="view" id="v-architecture">
+${topbar('Console admin · vue technique','Architecture technique','Les 6 couches du système, l’isolation multi-tenant et la plateforme IA commune — « start simple, design for scale ».','')}
+
+<div class="grid g2" style="margin-bottom:16px;align-items:start;">
+  <div class="card">
+    <div class="section-title">Architecture en 6 couches</div>
+    <div class="section-sub">Chaque nouveau module se branche sans modifier la structure</div>
+    <div class="stack-wrap">
+      ${[
+        ['Data Ingestion','Photo, PDF, Excel, WhatsApp, Mobile Money — les données brutes, quelle que soit leur forme'],
+        ['Document Intelligence','OCR, extraction de champs, classement automatique'],
+        ['Business Memory','Représentation structurée et persistante de l’entreprise — le socle unique'],
+        ['Intelligence','Analyse, scoring, détection d’anomalies à partir de la Business Memory'],
+        ['AI Agents','CFO IA, Commercial IA, COO IA — modules métier branchés sur le socle commun'],
+        ['Action Layer','Rapport, relance, facture — toujours avec validation humaine sur les actions sensibles'],
+      ].map(([name,desc],i,arr)=>`
+        <div class="stack-layer"><div class="stack-num">${i+1}</div><div><div class="stack-name">${name}</div><div class="stack-desc">${desc}</div></div></div>
+        ${i<arr.length-1?`<div class="stack-arrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 4v16M6 14l6 6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`:''}
+      `).join('')}
+    </div>
+  </div>
+  <div>
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Isolation multi-tenant</div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.8;margin:10px 0 14px;">
+        Chaque tenant dispose d’un espace logiquement isolé : un <code style="background:var(--paper);padding:1px 6px;border-radius:5px;">tenant_id</code>
+        sur chaque entité, combiné à la Row-Level Security de PostgreSQL. Un cabinet comptable peut accéder à
+        plusieurs tenants depuis un même compte.
+      </p>
+      <div class="divider"></div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${['API Gateway','Services applicatifs','Base de données (RLS)'].map(l=>`
+          <div style="display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:700;color:var(--text-dim);font-family:var(--font-heading);">
+            <span style="width:8px;height:8px;border-radius:2px;background:var(--indigo);"></span>${l} — isolation par tenant_id
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="ai-card">
+      <div class="ai-badge">${I.layers}AI Platform commune</div>
+      <div class="section-sub" style="margin-bottom:14px;">Une plateforme unique pour tous les agents — cohérence, gouvernance, coûts maîtrisés</div>
+      ${['Passerelle de routage de modèles (LiteLLM)','Couche de connaissance — RAG, embeddings, mémoire','Couche d’exécution — tool calling, orchestration','Couche de gouvernance — guardrails, évaluation, monitoring'].map(l=>`
+        <div class="list-row" style="padding:9px 0;"><span style="font-size:13px;">${l}</span></div>`).join('')}
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;">
+  <div class="section-title">Portabilité du déploiement</div>
+  <div class="section-sub">La même base de code (images Docker) supporte deux modes</div>
+  <div class="grid g2e">
+    <div style="border:1px solid var(--line);border-radius:12px;padding:16px;">
+      <span class="pill pill-info" style="margin-bottom:10px;">SaaS multi-tenant</span>
+      <p style="font-size:12.5px;color:var(--text-dim);line-height:1.7;margin:8px 0 0;">Kubernetes en cloud, un socle partagé par tous les tenants, montée en charge élastique.</p>
+    </div>
+    <div style="border:1px solid var(--line);border-radius:12px;padding:16px;">
+      <span class="pill pill-neutral" style="margin-bottom:10px;">On-premise mono-tenant</span>
+      <p style="font-size:12.5px;color:var(--text-dim);line-height:1.7;margin:8px 0 0;">docker-compose sur un serveur client, LLM auto-hébergé (Ollama) quand les données ne peuvent pas sortir — banques, institutions réglementées.</p>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-title">Stack technique recommandée</div>
+  <div class="section-sub">Ouverte, conteneurisable, sans coût de licence — évite tout verrouillage propriétaire</div>
+  <table class="tbl">
+    <thead><tr><th>Couche</th><th>Outil</th><th>Licence</th></tr></thead>
+    <tbody>
+      ${[
+        ['Backend métier','NestJS (TypeScript)'],['Backend IA / OCR','FastAPI (Python)'],
+        ['Base de données','PostgreSQL + pgvector'],['Stockage objet','MinIO'],
+        ['Cache / queues','Redis'],['Event bus','RabbitMQ'],
+        ['OCR','Tesseract'],['LLM on-premise','Llama 3 / Mistral (Ollama)'],
+        ['Orchestration RAG / agents','LangChain / LlamaIndex'],['Auth / RBAC / SSO','Keycloak'],
+        ['API Gateway','Traefik'],['Frontend web / mobile','Next.js · React Native'],
+        ['Conteneurisation','Docker + docker-compose'],['Orchestration cloud','Kubernetes (K3s en petite échelle)'],
+        ['Observabilité','Prometheus + Grafana + Loki'],
+      ].map(([c,o])=>`<tr><td class="name-cell">${c}</td><td>${o}</td><td><span class="pill pill-success">Open-source</span></td></tr>`).join('')}
+    </tbody>
+  </table>
+</div>
+</section>`;
+
+/* ================= 18. FEUILLE DE ROUTE ================= */
+canvas.innerHTML += `<section class="view" id="v-roadmap">
+${topbar('Vision produit','Feuille de route','Une roadmap modulaire disciplinée — chaque version ajoute une couche fonctionnelle sans reconstruire le socle.','')}
+
+<div class="rm-track">
+  <div class="rm-node on"></div><div class="rm-seg on"></div>
+  <div class="rm-node on"></div><div class="rm-seg"></div>
+  <div class="rm-node next"></div><div class="rm-seg"></div>
+  <div class="rm-node"></div>
+</div>
+
+<div class="grid g4" style="margin-bottom:20px;">
+  ${[
+    ['V1','MVP',['Business Scanner','Mémoire Entreprise','CFO IA','Rapport IA','Assistant IA'],'pill-success','Disponible'],
+    ['V2','Commercial Intelligence',['Commercial IA','WhatsApp Business','CRM léger','Relances automatiques'],'pill-warning','En cours'],
+    ['V3','Operations Intelligence',['COO IA','Stocks & achats','Fournisseurs','Rapprochement Mobile Money'],'pill-neutral','Planifié'],
+    ['V4','Automation / Agents',['Automatisations avancées','Agents autonomes supervisés','Intégrations ERP / banques'],'pill-neutral','Planifié'],
+  ].map(([v,name,mods,cls,status])=>`
+    <div class="card rm-card">
+      <span class="pill ${cls} rm-status">${status}</span>
+      <div class="rm-version">${v}</div>
+      <div class="rm-name">${name}</div>
+      ${mods.map(m=>`<div class="rm-mod"><span class="dot2"></span>${m}</div>`).join('')}
+    </div>`).join('')}
+</div>
+
+<div class="card">
+  <div class="section-title">Modules futurs (au-delà de V4)</div>
+  <div class="section-sub">Même socle, agents additionnels — CFO IA (aujourd’hui) → Commercial IA → COO IA → HR IA → Legal IA → Procurement IA</div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+    ${['HR IA','Legal IA','Procurement IA'].map(m=>`<span class="pill pill-neutral" style="padding:7px 14px;">${m}</span>`).join('')}
+  </div>
+  <div style="margin-top:14px;"><a href="#agents" onclick="event.preventDefault();setActive('agents');" style="font-size:12.5px;font-weight:700;color:var(--ink-3);font-family:var(--font-heading);">Voir le détail dans Agents & Extensions →</a></div>
+  <div class="divider"></div>
+  <div class="section-title" style="font-size:14px;">Trajectoire de montée en charge</div>
+  <p style="font-size:13px;color:var(--text-dim);line-height:1.8;margin:10px 0 0;max-width:640px;">
+    De 10 entreprises pilotes à plusieurs millions d’utilisateurs, sans réécriture de l’architecture —
+    le principe directeur reste : « start simple, design for scale ».
+  </p>
+</div>
+</section>`;
+
+/* ---------------- MICRO-INTERACTIONS SPOTLIGHT & WEBSOCKET ---------------- */
+document.querySelectorAll('.card').forEach(card => {
+  card.addEventListener('mousemove', e => {
+    const rect = card.getBoundingClientRect();
+    card.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
+    card.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
+  });
+});
+
+/* Simulation interactive Supabase Realtime */
+function triggerSimulatedSupabaseEvent(){
+  const kpiTresor = document.getElementById('kpi-tresor');
+  const kpiCA = document.getElementById('kpi-ca');
+  const creancesList = document.getElementById('creances-container');
+  
+  if(kpiTresor && kpiCA && creancesList){
+    const newEntry = document.createElement('div');
+    newEntry.className = 'list-row';
+    newEntry.style.animation = "fade 0.4s ease";
+    newEntry.innerHTML = `
+      <div>
+        <div class="name-cell" style="color:var(--green);">Paiement Webhook MoMo Reçu</div>
+        <div style="font-size:11.5px;color:var(--text-dim);">Clinique Excellence Santé · rapprochement instantané</div>
+      </div>
+      <div class="mono" style="font-weight:700;color:var(--green);">+312 000 F</div>
+    `;
+    creancesList.insertBefore(newEntry, creancesList.firstChild);
+
+    kpiTresor.textContent = "1 377 000 F";
+    kpiTresor.style.color = "var(--green)";
+    kpiCA.textContent = "4 592 000 F";
+    setTimeout(() => {
+      kpiTresor.style.color = "var(--ink)";
+    }, 1500);
+  }
+}
+
+canvas.addEventListener('click', e=>{
+  const tab = e.target.closest('.tab-pill'); if(!tab) return;
+  tab.parentElement.querySelectorAll('.tab-pill').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+});
+
+setActive('dashboard');
+</script>
+</body>
+</html>

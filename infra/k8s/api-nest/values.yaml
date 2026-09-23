@@ -1,0 +1,33 @@
+replicaCount: 1
+image:
+  repository: elara/api-nest
+  tag: latest
+  pullPolicy: IfNotPresent
+service:
+  port: 80
+  targetPort: 3001
+apiAiPort: 80
+secrets:
+  enabled: false
+  name: elara-secrets
+ingress:
+  enabled: false
+  className: nginx
+  host: elara-app.local
+  path: /api
+  pathType: Prefix
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+autoscaling:
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 1
+    memory: 1Gi
+env:
+  ENVIRONMENT: dev

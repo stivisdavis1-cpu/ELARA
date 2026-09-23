@@ -1,12 +1,32 @@
 replicaCount: 1
 image:
   repository: elara/api-ai
-  tag: latest
+  tag: onpremise
+  pullPolicy: IfNotPresent
 service:
   port: 80
+  targetPort: 8000
+secrets:
+  enabled: true
+  name: elara-secrets
+ingress:
+  enabled: true
+  className: nginx
+  host: elara-app.local
+  path: /ai
+  pathType: Prefix
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
 autoscaling:
   minReplicas: 1
   maxReplicas: 3
   targetCPUUtilizationPercentage: 80
+resources:
+  requests:
+    cpu: 200m
+    memory: 512Mi
+  limits:
+    cpu: 2
+    memory: 4Gi
 env:
   ENVIRONMENT: onpremise

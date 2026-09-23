@@ -9,9 +9,20 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "framer-motion": "^13.2.0",
+    "jsdom": "^30.0.1",
+    "jszip": "3.10.2",
+    "lucide-react": "^1.45.0",
+    "mammoth": "^1.12.3",
     "next": "16.3.4",
+    "next-auth": "^5.0.0-beta.32",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "react-image-crop": "^11.1.2",
+    "react-markdown": "^10.1.0",
+    "socket.io-client": "^4.8.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

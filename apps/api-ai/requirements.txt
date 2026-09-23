@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+requests
+pika
+pdf2image
+pytesseract
+python-multipart
+pdfplumber
+Pillow
+pymupdf
+rapidocr_onnxruntime
+boto3
+openai
+python-docx
+reportlab

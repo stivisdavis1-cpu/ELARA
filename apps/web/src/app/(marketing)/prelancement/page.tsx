@@ -1,0 +1,305 @@
+﻿"use client";
+import React, { useState, useEffect, useRef } from "react";
+import "./prelancement.css";
+
+export default function PrelancementPage() {
+  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [finalPos, setFinalPos] = useState(0);
+  const [referLink, setReferLink] = useState("elara.app/r/••••••");
+  const [copyText, setCopyText] = useState("Copier");
+  
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+    // Intersection Observer for scroll animations
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const items = document.querySelectorAll('.reveal-scroll');
+    if (reduceMotion || !('IntersectionObserver' in window)) {
+      items.forEach((el) => el.classList.add('is-visible'));
+      return;
+    }
+    observerRef.current = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          observerRef.current?.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: '0px 0px -60px 0px' });
+    
+    items.forEach((el) => observerRef.current?.observe(el));
+    
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, []);
+
+  const randomCode = (len: number) => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for(let i=0; i<len; i++) out += chars[Math.floor(Math.random()*chars.length)];
+    return out;
+  };
+
+  const handleSignup = (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = randomCode(6);
+    const link = 'elara.app/r/' + code;
+    setReferLink(link);
+    setFormSubmitted(true);
+    
+    const finalPosition = 120 + Math.floor(Math.random()*260);
+    setFinalPos(finalPosition);
+    
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduceMotion){
+      setPosition(finalPosition);
+    } else {
+      let start: number | null = null;
+      const duration = 700;
+      const step = (ts: number) => {
+        if(!start) start = ts;
+        const progress = Math.min((ts - start) / duration, 1);
+        setPosition(Math.round(120 + progress * (finalPosition - 120)));
+        if(progress < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+  };
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(referLink).then(() => {
+      setCopyText("Copié !");
+      setTimeout(() => setCopyText("Copier"), 1600);
+    }).catch(() => {});
+  };
+
+  const waText = encodeURIComponent(`Je viens de m'inscrire sur la liste d'attente d'Elara, l'Assistant Virtuel qui organise automatiquement les finances des PME. Rejoins-moi via mon lien : https://${referLink}`);
+  const mailSubject = encodeURIComponent("Rejoins-moi sur la liste d'attente d'Elara");
+  const mailBody = encodeURIComponent(`Salut,
+
+Je viens de m'inscrire sur la liste d'attente d'Elara, l'outil qui transforme les documents et messages de mon entreprise en tableau de bord financier.
+
+Inscris-toi via mon lien : https://${referLink}
+
+À bientôt !`);
+
+  return (
+    <div className="prelancement-page">
+      <header>
+  <div className="wrap nav">
+    <a className="brand" href="#" aria-label="Elara — accueil">
+      <svg width="28" height="24" viewBox="0 0 30 26" fill="none" aria-hidden="true">
+        <path d="M0 13 L6 13 L8.5 3 L12 23 L15.5 8 L18.5 18 L21 13 L30 13" stroke="url(#preNavLogoGrad)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+        <defs><linearGradient id="preNavLogoGrad" x1="0" y1="0" x2="30" y2="0"><stop stopColor="#A9761F"/><stop offset="1" stopColor="#1A4A3C"/></linearGradient></defs>
+      </svg>
+      Elara
+    </a>
+    <span className="nav-tag"><span className="dot"></span>Ouverture progressive <span className="hide-mobile">— Cameroun</span></span>
+  </div>
+</header>
+
+<div className="hero-banner">
+  <div className="no-image-anim" aria-hidden="true"></div>
+  <img src="https://images.pexels.com/photos/3874040/pexels-photo-3874040.jpeg?auto=compress&cs=tinysrgb&w=1400" alt="Entrepreneur au travail" />
+  <div className="hero-banner-copy">
+    <span className="eyebrow reveal-up" style={{animationDelay: ".02s"}}>Avant le lancement</span>
+    <h1 className="reveal-up" style={{animationDelay: ".12s"}}>Soyez parmi les <span className="mkt-highlight">premiers entrepreneurs</span> à essayer Elara.</h1>
+  </div>
+</div>
+
+<section className="signup-section">
+  <div className="wrap signup-grid">
+    <div>
+      <p className="hero-sub">Elara ouvre l'accès progressivement, par vagues. Inscrivez-vous à la liste d'attente et faites avancer votre place en invitant d'autres entrepreneurs — avec des mois offerts à la clé.</p>
+
+      <form className="signup-form reveal-scroll" id="signupForm" style={{ display: formSubmitted ? 'none' : 'flex' }} onSubmit={handleSignup}>
+        <div className="signup-row">
+          <input type="text" id="pname" placeholder="Prénom" required />
+          <input type="email" id="pemail" placeholder="Email" required />
+        </div>
+        <input type="text" id="pcompany" placeholder="Nom de votre entreprise (optionnel)" />
+        <button type="submit" className="signup-btn">Rejoindre la liste d'attente</button>
+        <p className="signup-note">Aucune carte bancaire requise. Vous recevrez un email dès l'ouverture de votre créneau.</p>
+      </form>
+
+      <div className={`success-panel ${formSubmitted ? 'show' : ''}`} id="successPanel">
+        <div className="position-card">
+          <div className="position-label">Votre position dans la file</div>
+          <div className="position-num" id="positionNum">#{position === 0 ? '—' : position}</div>
+          <div className="position-hint">Position indicative, mise à jour en temps réel une fois votre invitation partagée.</div>
+        </div>
+        <div className="refer-box">
+          <h3>Avancez dans la file</h3>
+          <p>Partagez votre lien personnel — chaque entrepreneur inscrit grâce à vous vous rapproche de l'accès anticipé et des récompenses ci-contre.</p>
+          <div className="refer-link-row">
+            <input type="text" id="referLink" readOnly value={referLink} />
+            <button className="copy-btn" id="copyBtn" type="button" onClick={copyToClipboard}>{copyText}</button>
+          </div>
+          <div className="share-row">
+            <a className="share-btn" id="waShare" href={`https://wa.me/?text=${waText}`} target="_blank" rel="noopener noreferrer">Partager sur WhatsApp</a>
+            <a className="share-btn" id="mailShare" href={`mailto:?subject=${mailSubject}&body=${mailBody}`}>Partager par email</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div className={`ladder-panel reveal-scroll ${formSubmitted ? 'is-visible' : ''}`}>
+      <h2>Parrainez, <span className="mkt-highlight">avancez</span>, gagnez</h2>
+      <p className="sub">Vos récompenses se cumulent au fil de vos invitations.</p>
+
+      <div className="rung">
+        <div className="rung-num">1</div>
+        <div>
+          <div className="rung-title">1 invitation acceptée</div>
+          <div className="rung-desc">Vous passez devant la moitié de la file d'attente restante.</div>
+        </div>
+      </div>
+      <div className="rung">
+        <div className="rung-num">3</div>
+        <div>
+          <div className="rung-title">3 invitations acceptées</div>
+          <div className="rung-desc">1 mois du palier Starter offert dès l'ouverture de votre accès.</div>
+        </div>
+      </div>
+      <div className="rung">
+        <div className="rung-num">5</div>
+        <div>
+          <div className="rung-title">5 invitations acceptées</div>
+          <div className="rung-desc">3 mois du palier Pro offerts, badge « Fondateur Elara » sur votre profil.</div>
+        </div>
+      </div>
+      <div className="rung top">
+        <div className="rung-num">10</div>
+        <div>
+          <div className="rung-title">10 invitations acceptées</div>
+          <div className="rung-desc">1 an du palier Pro offert et tarif préférentiel à vie, garanti même après augmentation des prix.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section className="plans-section">
+  <div className="wrap">
+    <div className="section-head reveal-scroll" style={{textAlign: "center", marginInline: "auto"}}>
+      <span className="section-label">Les Paliers à l'Ouverture</span>
+      <h2 style={{fontSize: "clamp(20px, 2.4vw, 32px)"}}>Découvrez les formules disponibles au <span className="mkt-highlight">lancement</span></h2>
+      <p style={{marginInline: "auto"}}>Chaque palier supérieur conserve l'ensemble des fonctionnalités du précédent et renforce l'accompagnement direct de votre entreprise.</p>
+    </div>
+
+    <div className="pricing-grid reveal-scroll">
+      <div className="pricing-card">
+        <div className="pricing-name">Freemium</div>
+        <div style={{fontSize: "11.5px", color: "var(--text-dim)"}}>Pour tester le système</div>
+        <div className="pricing-price">0 F <span>/mois</span></div>
+        <div className="pricing-inheritance">Socle de base</div>
+        <ul className="pricing-features">
+          <li>Business Scanner (20 documents/mois)</li>
+          <li>Rapport mensuel ponctuel</li>
+          <li>Assistant restreint</li>
+        </ul>
+        <div className="pricing-contract">
+          <strong>À l'ouverture :</strong> Accès immédiat et support numérique.
+        </div>
+        <button className="pricing-btn" onClick={() => { document.getElementById('signupForm')?.scrollIntoView({behavior:'smooth'}) }}>Rejoindre la file</button>
+      </div>
+
+      <div className="pricing-card featured">
+        <span className="pricing-badge">Recommandé</span>
+        <div className="pricing-name">Starter</div>
+        <div style={{fontSize: "11.5px", color: "var(--text-dim)"}}>Accessible dès 3 parrainages</div>
+        <div className="pricing-price">9 900 F <span>/mois</span></div>
+        <div className="pricing-inheritance">Tout ce qui est dans Freemium, plus :</div>
+        <ul className="pricing-features">
+          <li>Business Scanner illimité</li>
+          <li>Mémoire d'Entreprise complète</li>
+          <li>Directeur Financier Virtuel de base &amp; radar TVA</li>
+          <li>3 utilisateurs inclus</li>
+        </ul>
+        <div className="pricing-contract">
+          <strong>À l'ouverture :</strong> Session de cadrage (30 min) et support email garanti.
+        </div>
+        <button className="pricing-btn" onClick={() => { document.getElementById('signupForm')?.scrollIntoView({behavior:'smooth'}) }}>Gagner ce palier</button>
+      </div>
+
+      <div className="pricing-card">
+        <div className="pricing-name">Pro</div>
+        <div style={{fontSize: "11.5px", color: "var(--text-dim)"}}>Accessible dès 5 parrainages</div>
+        <div className="pricing-price">24 900 F <span>/mois</span></div>
+        <div className="pricing-inheritance">Tout ce qui est dans Starter, plus :</div>
+        <ul className="pricing-features">
+          <li>Module Assistant Commercial</li>
+          <li>Importation WhatsApp Business</li>
+          <li>Automatisations assistées</li>
+          <li>Rapprochement bancaire &amp; MoMo</li>
+        </ul>
+        <div className="pricing-contract">
+          <strong>À l'ouverture :</strong> Onboarding complet de l'équipe (1h) et support WhatsApp direct.
+        </div>
+        <button className="pricing-btn" onClick={() => { document.getElementById('signupForm')?.scrollIntoView({behavior:'smooth'}) }}>Gagner ce palier</button>
+      </div>
+
+      <div className="pricing-card">
+        <div className="pricing-name">Business</div>
+        <div style={{fontSize: "11.5px", color: "var(--text-dim)"}}>Structures en expansion</div>
+        <div className="pricing-price">54 900 F <span>/mois</span></div>
+        <div className="pricing-inheritance">Tout ce qui est dans Pro, plus :</div>
+        <ul className="pricing-features">
+          <li>Module Opérations &amp; Assistant Opérationnel</li>
+          <li>Intégrations API &amp; export ERP</li>
+          <li>Comptes multi-utilisateurs avancés</li>
+        </ul>
+        <div className="pricing-contract">
+          <strong>À l'ouverture :</strong> Convention Loi n°2024/017 signée et Account Manager dédié par téléphone.
+        </div>
+        <button className="pricing-btn" onClick={() => { document.getElementById('signupForm')?.scrollIntoView({behavior:'smooth'}) }}>S'inscrire</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section className="why">
+  <div className="wrap">
+    <div className="why-strip">
+      <div className="no-image-anim" aria-hidden="true"></div>
+      <img src="https://images.pexels.com/photos/20209020/pexels-photo-20209020.jpeg?auto=compress&cs=tinysrgb&w=1400" alt="Entrepreneure" />
+      <div className="why-strip-copy">Conçu pour la réalité du commerce africain — pas importé d'ailleurs.</div>
+    </div>
+    <div className="why-grid reveal-scroll">
+      <div className="why-card">
+        <div className="why-num">Pourquoi maintenant</div>
+        <h3>Un accès accompagné, pas un simple compte</h3>
+        <p>Les premières entreprises inscrites bénéficient d'un onboarding personnalisé pour connecter leurs premiers documents et obtenir leur premier Business Health Score en quelques jours.</p>
+      </div>
+      <div className="why-card">
+        <div className="why-num">Ce qui vous attend</div>
+        <h3>Business Scanner, Directeur Financier Virtuel et Rapport Automatisé dès le jour 1</h3>
+        <p>Dès l'ouverture de votre créneau, vous accédez aux modules du MVP : extraction de documents, mémoire d'entreprise, indicateurs financiers et Assistant Virtuel.</p>
+      </div>
+      <div className="why-card">
+        <div className="why-num">Sans risque</div>
+        <h3>Aucun engagement avant l'ouverture</h3>
+        <p>L'inscription à la liste d'attente est gratuite et sans engagement. Vous choisissez votre palier au moment où votre accès s'ouvre.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div className="wrap foot-row">
+    <div className="foot-brand">
+      <svg width="24" height="21" viewBox="0 0 30 26" fill="none" aria-hidden="true">
+        <path d="M0 13 L6 13 L8.5 3 L12 23 L15.5 8 L18.5 18 L21 13 L30 13" stroke="url(#preFootLogoGrad)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+        <defs><linearGradient id="preFootLogoGrad" x1="0" y1="0" x2="30" y2="0"><stop stopColor="#D9A64A"/><stop offset="1" stopColor="#6FA890"/></linearGradient></defs>
+      </svg>
+      Elara
+    </div>
+    <div className="foot-meta">contact@elara.app · www.elara.app · Douala, Cameroun</div>
+  </div>
+</footer>
+    </div>
+  );
+}
+
