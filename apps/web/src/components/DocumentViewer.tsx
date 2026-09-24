@@ -1,11 +1,20 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
-import { FileText, Download, Loader2 } from "lucide-react";
+import * as React from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { FileText, Download, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import type { PDFDocumentProxy, PDFDocumentLoadingTask } from "pdfjs-dist";
+
+// Chargé dynamiquement dans l'effet (jamais évalué au build/prérendu : pdf.js v6
+// requiert `Iterator`, absent de Node 20 utilisé dans l'image Docker).
+const pdfWorkerUrl = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 type PreviewState =
   | { kind: 'loading' }
-  | { kind: 'pdf'; blobUrl: string }
   | { kind: 'image'; blobUrl: string }
+  | { kind: 'pdf'; numPages: number }
   | { kind: 'html'; html: string }
   | { kind: 'text'; text: string }
   | { kind: 'csv'; head: string[]; rows: string[][] }
@@ -72,14 +81,26 @@ export interface DocumentViewerProps {
 
 export default function DocumentViewer({ url, fileName, title, mimeType }: DocumentViewerProps) {
   const [state, setState] = useState<PreviewState>({ kind: 'loading' });
+  const [pdfPage, setPdfPage] = useState(1);
   const blobUrlRef = useRef('');
+  const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
+  const pdfTaskRef = useRef<PDFDocumentLoadingTask | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasWrapRef = useRef<HTMLDivElement | null>(null);
 
-  const revoke = () => {
+  const revoke = useCallback(() => {
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current);
       blobUrlRef.current = '';
     }
-  };
+  }, []);
+
+  const destroyPdf = useCallback(() => {
+    pdfDocRef.current = null;
+    const task = pdfTaskRef.current;
+    pdfTaskRef.current = null;
+    try { task?.destroy(); } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     const mime = mimeType || mimeFromName(fileName);
@@ -121,16 +142,36 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
         if (!res.ok || cancelled) { if (!cancelled) setState({ kind: 'unsupported' }); return; }
 
         const servedMime = (res.headers.get('Content-Type') || '').split(';')[0].trim();
-        const kind = decideFromServed(servedMime) === 'unsupported' ? kindFromName : decideFromServed(servedMime);
+        const decided = decideFromServed(servedMime);
+        const kind: typeof kindFromName | 'unsupported' = decided === 'unsupported' ? kindFromName : decided;
 
-        if (!kind || kind === 'unsupported') { setState({ kind: 'unsupported' }); return; }
+        if (!kind) { setState({ kind: 'unsupported' }); return; }
 
-        if (kind === 'pdf' || kind === 'image') {
+        if (kind === 'pdf') {
+          const buf = await res.arrayBuffer();
+          if (cancelled) return;
+          destroyPdf();
+          // Rendu 100% côté client via pdf.js (canvas) : aucun visualiseur natif n'est
+          // sollicité, donc aucun réglage navigateur ne peut déclencher un téléchargement.
+          const pdfjs = await import('pdfjs-dist');
+          if (cancelled) return;
+          pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+          const task = pdfjs.getDocument({ data: buf });
+          pdfTaskRef.current = task;
+          const doc = await task.promise;
+          if (cancelled || !doc) return;
+          pdfDocRef.current = doc;
+          setPdfPage(1);
+          setState({ kind: 'pdf', numPages: doc.numPages });
+          return;
+        }
+
+        if (kind === 'image') {
           const blob = await res.blob();
           if (cancelled || !blob.size) return;
           revoke();
           blobUrlRef.current = URL.createObjectURL(blob);
-          setState(kind === 'pdf' ? { kind: 'pdf', blobUrl: blobUrlRef.current } : { kind: 'image', blobUrl: blobUrlRef.current });
+          setState({ kind: 'image', blobUrl: blobUrlRef.current });
           return;
         }
 
@@ -179,8 +220,52 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
     return () => {
       cancelled = true;
       revoke();
+      destroyPdf();
     };
-  }, [url, fileName, mimeType]);
+  }, [url, fileName, mimeType, revoke, destroyPdf]);
+
+  // Rendu de la page PDF courante dans le canvas.
+  const isPdf = state.kind === 'pdf';
+  const numPages = isPdf ? state.numPages : 0;
+
+  useEffect(() => {
+    if (!isPdf) return;
+    let cancelled = false;
+    const doc = pdfDocRef.current;
+    const wrap = canvasWrapRef.current;
+    const canvas = canvasRef.current;
+    if (!doc || !wrap || !canvas) return;
+    (async () => {
+      try {
+        const page = await doc.getPage(Math.min(pdfPage, numPages));
+        if (cancelled) return;
+        const baseViewport = page.getViewport({ scale: 1 });
+        const availWidth = Math.max(360, (wrap.clientWidth || 700) - 48);
+        const scale = availWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale });
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(viewport.width * dpr);
+        canvas.height = Math.floor(viewport.height * dpr);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        await page.render({
+          canvas,
+          viewport,
+          transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined,
+        }).promise;
+        if (!cancelled) page.cleanup();
+      } catch { /* erreur de rendu d'une page : on garde le canvas vide */ }
+    })();
+    return () => { cancelled = true; };
+  }, [isPdf, pdfPage, numPages]);
+
+  const prevPage = useCallback(() => {
+    if (isPdf && pdfPage > 1) setPdfPage(p => p - 1);
+  }, [isPdf, pdfPage]);
+
+  const nextPage = useCallback(() => {
+    if (isPdf && pdfPage < numPages) setPdfPage(p => p + 1);
+  }, [isPdf, numPages, pdfPage]);
 
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', overflow: 'auto' }}>
@@ -192,7 +277,18 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
       )}
 
       {state.kind === 'pdf' && (
-        <iframe src={state.blobUrl} title={title || fileName} style={{ width: '100%', height: '100%', border: 'none' }} />
+        <div ref={canvasWrapRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'auto', background: '#52525B', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16 }}>
+          <canvas ref={canvasRef} style={{ boxShadow: '0 6px 24px rgba(0,0,0,0.35)', background: '#fff', borderRadius: 2 }} />
+          <div style={{ position: 'sticky', top: 0, marginLeft: -0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(15,23,42,0.75)', color: '#fff', padding: '4px 8px', borderRadius: 999, fontSize: 12, alignSelf: 'flex-start' }}>
+            <button onClick={prevPage} disabled={pdfPage <= 1} style={{ background: 'transparent', border: 'none', color: pdfPage <= 1 ? 'rgba(255,255,255,0.35)' : '#fff', cursor: pdfPage <= 1 ? 'default' : 'pointer', padding: 2 }} title="Page précédente">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span>{pdfPage} / {numPages}</span>
+            <button onClick={nextPage} disabled={pdfPage >= numPages} style={{ background: 'transparent', border: 'none', color: pdfPage >= numPages ? 'rgba(255,255,255,0.35)' : '#fff', cursor: pdfPage >= numPages ? 'default' : 'pointer', padding: 2 }} title="Page suivante">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
       )}
 
       {state.kind === 'image' && (
