@@ -1,6 +1,7 @@
 "use client";
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { FileText, Folder, X, Loader2, AlertTriangle, Search, Archive, Eye, Download } from "lucide-react";
+import DocumentViewer from "../../../components/DocumentViewer";
 
 interface DocRow {
   id: string;
@@ -45,25 +46,6 @@ export default function DocumentsPage() {
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState<DocRow | null>(null);
   const [error, setError] = useState('');
-  const [blobUrl, setBlobUrl] = useState('');
-  const blobUrlRef = useRef('');
-
-  useEffect(() => {
-    if (!preview) { setBlobUrl(''); return; }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/scanner/file/${encodeURIComponent(preview.id)}`);
-        if (!res.ok || cancelled) return;
-        const blob = await res.blob();
-        if (cancelled || !blob.size) return;
-        if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = URL.createObjectURL(blob);
-        setBlobUrl(blobUrlRef.current);
-      } catch (_) { /* aperçu indisponible */ }
-    })();
-    return () => { cancelled = true; };
-  }, [preview]);
 
   const load = useCallback(async () => {
     try {
@@ -118,9 +100,6 @@ export default function DocumentsPage() {
   const includedGo = 2 * 1024 * 1024 * 1024;
   const pct = includedGo ? Math.min(100, Math.round((totalSize / includedGo) * 100)) : 0;
   const classementPct = docs.length ? Math.round((totalArchives / docs.length) * 100) : 0;
-
-  const isPdf = (d: DocRow) => (d.fichier || d.type || '').toLowerCase().includes('.pdf');
-  const isImage = (d: DocRow) => /\.(png|jpe?g|webp|tiff?|bmp)$/i.test(d.fichier);
 
   return (
     <section className="view" id="v-documents">
@@ -232,38 +211,30 @@ export default function DocumentsPage() {
       {preview && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(15,23,42,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }} onClick={() => setPreview(null)}>
           <div className="card pv-card" style={{ width: 'min(1100px, 94vw)', height: 'min(780px, 90vh)', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
-            <div className="pv-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--line)', gap: 12 }}>
-              <div className="pv-title" style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{preview.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
-                  {fmtDate(preview.date)} · <span className={statusPill(preview.statut)}>{preview.statut}</span>
-                  {preview.archive ? ` · Chemin : ${preview.archive.archive_path}` : ''}
-                </div>
-              </div>
-<div className="pv-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <a className="btn btn-primary teal" style={{ padding: '6px 12px', fontSize: 12, textDecoration: 'none' }} href={blobUrl} download={preview.fichier || preview.name} onClick={(e) => { if (!blobUrl) { e.preventDefault(); alert('Aperçu pas encore chargé, réessayez dans un instant.'); } }}><Download className="w-3 h-3 inline" style={{ marginRight: 4 }} /> Télécharger</a>
-                  <a className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12, textDecoration: 'none' }} href={`/api/scanner/file/${encodeURIComponent(preview.id)}`} target="_blank" rel="noreferrer">Ouvrir en grand</a>
-                  <button className="btn btn-ghost" style={{ padding: '8px' }} onClick={() => setPreview(null)}><X className="w-4 h-4" /></button>
-                </div>
-              </div>
-              <div style={{ height: 'calc(min(780px, 90vh) - 65px)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F8FAFC', overflow: 'hidden' }}>
-              {!blobUrl ? (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, color: 'var(--text-dim)', fontSize: 13 }}>
-                  <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--teal)' }} />
-                  Chargement de l'aperçu…
-                </div>
-              ) : isPdf(preview) ? (
-                <iframe src={blobUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="Aperçu PDF" />
-              ) : isImage(preview) ? (
-                <img src={blobUrl} alt={preview.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
-              ) : (
-                <div style={{ textAlign: 'center', color: 'var(--text-dim)', padding: 40 }}>
-                  <FileText className="w-16 h-16" style={{ margin: '0 auto 16px', color: 'var(--border)' }} />
-                  Aperçu non disponible pour ce format.<br />
-                  Utilisez le bouton « Télécharger » pour ouvrir le fichier.
-                </div>
-              )}
-              </div>
+            {(() => {
+              const fileUrl = `/api/scanner/file/${encodeURIComponent(preview.id)}`;
+              return (
+                <>
+                  <div className="pv-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--line)', gap: 12 }}>
+                    <div className="pv-title" style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{preview.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-dim)' }}>
+                        {fmtDate(preview.date)} · <span className={statusPill(preview.statut)}>{preview.statut}</span>
+                        {preview.archive ? ` · Chemin : ${preview.archive.archive_path}` : ''}
+                      </div>
+                    </div>
+                    <div className="pv-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                      <a className="btn btn-primary teal" style={{ padding: '6px 12px', fontSize: 12, textDecoration: 'none' }} href={fileUrl} download={preview.fichier || preview.name}><Download className="w-3 h-3 inline" style={{ marginRight: 4 }} /> Télécharger</a>
+                      <a className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12, textDecoration: 'none' }} href={fileUrl} target="_blank" rel="noreferrer">Ouvrir en grand</a>
+                      <button className="btn btn-ghost" style={{ padding: '8px' }} onClick={() => setPreview(null)}><X className="w-4 h-4" /></button>
+                    </div>
+                  </div>
+                  <div style={{ height: 'calc(min(780px, 90vh) - 65px)', overflow: 'hidden' }}>
+                    <DocumentViewer url={fileUrl} fileName={preview.fichier || preview.name} title={preview.name} />
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

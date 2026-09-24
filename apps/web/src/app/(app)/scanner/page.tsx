@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import ScannerUploader from "../../../components/ScannerUploader";
+import DocumentViewer from "../../../components/DocumentViewer";
 import { FileText, X, AlertTriangle, Menu, Crop, Landmark, Building2, ShieldCheck, ScrollText, CalendarDays, Tags, Scale } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
@@ -134,8 +135,6 @@ export default function ScannerPage() {
     return () => window.removeEventListener('focus', onFocus);
   }, []);
   const socketRef = useRef<Socket | null>(null);
-  const [officePreview, setOfficePreview] = useState<{ type: 'docx'; html: string } | { type: 'pptx'; slides: string[][] } | { type: 'text'; text: string } | null>(null);
-  const [officeError, setOfficeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (session?.user) {
@@ -238,65 +237,9 @@ export default function ScannerPage() {
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  // Aperçu des documents Word (.docx/.doc) et PowerPoint (.pptx) rendus directement dans le navigateur
-  useEffect(() => {
-    const doc = documents.find(d => d.id === selectedDoc);
-    if (!doc?.localFileUrl) {
-      setOfficePreview(null);
-      setOfficeError(null);
-      return;
-    }
-    const name = doc.name.toLowerCase();
-    const isDocx = doc.mimeType?.includes('word') || name.endsWith('.docx') || name.endsWith('.doc');
-    const isPptx = doc.mimeType?.includes('presentation') || name.endsWith('.pptx');
-    const isRtf = doc.mimeType?.includes('rtf') || name.endsWith('.rtf');
-    if (!isDocx && !isPptx && !isRtf) {
-      setOfficePreview(null);
-      setOfficeError(null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      setOfficePreview(null);
-      setOfficeError(null);
-      try {
-        const resp = await fetch(doc.localFileUrl!);
-        const buf = await resp.arrayBuffer();
-        if (cancelled) return;
-        if (isDocx) {
-          const mammoth = (await import('mammoth')).default;
-          const result = await mammoth.convertToHtml({ arrayBuffer: buf });
-          if (!cancelled) setOfficePreview({ type: 'docx', html: result.value });
-        } else if (isRtf) {
-          const { rtfToPlainText } = await import('@/lib/rtf');
-          const text = rtfToPlainText(buf);
-          if (!cancelled) setOfficePreview({ type: 'text', text });
-        } else {
-          const JSZip = (await import('jszip')).default;
-          const zip = await JSZip.loadAsync(buf);
-          const slideFiles = Object.keys(zip.files)
-            .filter(f => /^ppt\/slides\/slide\d+\.xml$/.test(f))
-            .sort((a, b) => {
-              const n = (p: string) => parseInt(p.match(/slide(\d+)/)?.[1] || '0', 10);
-              return n(a) - n(b);
-            });
-          const slides: string[][] = [];
-          for (const f of slideFiles) {
-            const xml = await zip.files[f].async('string');
-            const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)]
-              .map(m => m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim())
-              .filter(Boolean);
-            slides.push(texts);
-          }
-          if (!cancelled) setOfficePreview({ type: 'pptx', slides });
-        }
-      } catch (e) {
-        console.error('Erreur d\'aperçu Office', e);
-        if (!cancelled) setOfficeError('Aperçu indisponible pour ce document.');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [selectedDoc, documents]);
+// Aperçu des documents Word (.docx/.doc), PowerPoint (.pptx), RTF, texte & CSV
+  // rendus directement dans le navigateur via le composant partagé DocumentViewer
+  // (PDF et images sont aussi gérés dedans, avec fallback « Télécharger » sinon).
 
   const handleScanComplete = (newDocs: ScannedDocument[]) => {
     setDocuments(prev => [...newDocs, ...prev]);
@@ -399,11 +342,6 @@ export default function ScannerPage() {
   };
 
   const activeDoc = documents.find(d => d.id === selectedDoc);
-
-  const isOfficeDoc = (doc: ScannedDocument) => {
-    const n = doc.name.toLowerCase();
-    return doc.mimeType?.includes('word') || doc.mimeType?.includes('presentation') || doc.mimeType?.includes('rtf') || n.endsWith('.docx') || n.endsWith('.doc') || n.endsWith('.pptx') || n.endsWith('.rtf');
-  };
 
   const listKeys = ['Acteurs', 'Mots-clés', 'Dates Clés', 'Domaine Métier'];
   const renderDataValue = (key: string, value: unknown) => {
@@ -677,59 +615,19 @@ export default function ScannerPage() {
                   </div>
                 )}
                 {activeDoc?.localFileUrl ? (
-                  activeDoc.mimeType?.includes('pdf') ? (
-                  <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                    {isDrawingMode && previewImage ? (
-                      <img 
-                        src={previewImage} 
+                  isDrawingMode && previewImage && activeDoc.mimeType?.includes('pdf') ? (
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+                      <img
+                        src={previewImage}
                         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         onLoad={(e) => {
                           const img = e.currentTarget;
                           setPreviewSize({ w: img.width, h: img.height, nw: img.naturalWidth, nh: img.naturalHeight });
                         }}
                       />
-                    ) : (
-                      <iframe src={activeDoc.localFileUrl} style={{ width: '100%', height: '100%', border: 'none' }} title="Document PDF"></iframe>
-                    )}
-                  </div>
-                  ) : activeDoc.mimeType?.includes('image') ? (
-                    <img src={activeDoc.localFileUrl} alt="Document scanné" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  ) : isOfficeDoc(activeDoc) && officePreview?.type === 'docx' ? (
-                    <div className="viewer-office" dangerouslySetInnerHTML={{ __html: officePreview.html }} />
-                  ) : isOfficeDoc(activeDoc) && officePreview?.type === 'text' ? (
-                    <div className="viewer-office">
-                      <pre className="rtf-pre">{officePreview.text}</pre>
-                    </div>
-                  ) : isOfficeDoc(activeDoc) && officePreview?.type === 'pptx' ? (
-                    <div className="viewer-pptx">
-                      {officePreview.slides.length > 0 ? officePreview.slides.map((lines, i) => (
-                        <div className="pptx-slide" key={i}>
-                          <div className="pptx-slide-num">{i + 1} / {officePreview!.slides.length}</div>
-                          {lines.map((t, j) => (
-                            <div key={j} className={j === 0 ? 'pptx-title' : 'pptx-line'}>{t}</div>
-                          ))}
-                        </div>
-                      )) : (
-                        <div style={{ color: 'rgba(255,255,255,0.8)', textAlign: 'center', padding: '40px' }}>
-                          Aucun texte détecté dans cette présentation.
-                        </div>
-                      )}
-                    </div>
-                  ) : isOfficeDoc(activeDoc) && officeError ? (
-                    <div style={{ textAlign: 'center', color: 'var(--red)' }}>
-                      <FileText className="w-16 h-16" style={{ margin: '0 auto 16px', color: 'var(--border)' }} />
-                      <p>{officeError}</p>
-                    </div>
-                  ) : isOfficeDoc(activeDoc) ? (
-                    <div style={{ textAlign: 'center', color: 'var(--text-dim)' }}>
-                      <FileText className="w-16 h-16 animate-pulse" style={{ margin: '0 auto 16px', color: 'var(--border)' }} />
-                      <p>Génération de l'aperçu en cours...</p>
                     </div>
                   ) : (
-                    <div style={{ textAlign: 'center', color: 'var(--text-dim)' }}>
-                      <FileText className="w-16 h-16" style={{ margin: '0 auto 16px', color: 'var(--border)' }} />
-                      <p>Aperçu non disponible pour ce format de fichier.<br/><span style={{ fontSize: '12px' }}>({activeDoc.mimeType || 'Format inconnu'})</span></p>
-                    </div>
+                    <DocumentViewer url={activeDoc.localFileUrl} fileName={activeDoc.name} mimeType={activeDoc.mimeType} />
                   )
                 ) : (
                   <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
