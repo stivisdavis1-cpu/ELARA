@@ -16,6 +16,8 @@ ingress:
   host: elara-app.local
   path: /
   pathType: Prefix
+  tls:
+    enabled: false
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$1
 autoscaling:

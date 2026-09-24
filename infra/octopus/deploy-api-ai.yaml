@@ -1,7 +1,45 @@
+# Process de déploiement ELARA — api-ai (référence structurée pour Octopus).
+# Mirroir de .octopus/deployment_process.ocl ; à maintenir en parallèle.
+name: elara-api-ai
+
+environments:
+  - dev
+  - staging
+  - production
+  - onpremise-template
+
 steps:
+  # 1. Déploiement du chart Helm avec les values de l'environnement ciblé
   - name: Deploy api-ai via Helm
     action: Octopus.HelmChartUpgrade
     properties:
+      Octopus.Action.Helm.ChartSource: ProjectGitRepository
       Octopus.Action.Helm.ChartDirectory: infra/k8s/api-ai
       Octopus.Action.Helm.ReleaseName: elara-api-ai
-      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/api-ai/values-#{Octopus.Environment.Name | ToLower}.yaml"
+      Octopus.Action.Helm.ResetValues: "True"
+      Octopus.Action.Helm.Timeout: "600"
+      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/api-ai/values-#{Elara.ValuesEnv}.yaml --atomic --install --timeout=600s"
+
+  # 2. Healthcheck post-déploiement
+  - name: Vérifier la santé api-ai
+    action: Octopus.Script
+    properties:
+      Octopus.Action.RunOnServer: false
+      Octopus.Action.Script.Syntax: Bash
+      Octopus.Action.Script.ScriptSource: Inline
+      Octopus.Action.Script.ScriptBody: |
+        set -e
+        NAMESPACE="elara-#{Octopus.Environment.Name | ToLower}"
+        kubectl rollout status deployment/elara-api-ai-api-ai -n "${NAMESPACE}" --timeout=300s
+        kubectl -n "${NAMESPACE}" port-forward svc/elara-api-ai-api-ai 8000:80 &
+        sleep 3
+        curl -fsS http://127.0.0.1:8000/health && echo "api-ai OK"
+    worker_pool: hosted-windows
+
+  # 3. Validation humaine obligatoire avant la promotion vers production
+  - name: Validation humaine obligatoire (production)
+    action: Octopus.ManualIntervention
+    environments: [production]
+    properties:
+      Octopus.Action.ManualIntervention.Instructions: "Aucune promotion vers production n'est automatique. Recette staging obligatoire avant autorisation."
+      Octopus.Action.ManualIntervention.ResponsibleTeam: ElaraReleaseManagers

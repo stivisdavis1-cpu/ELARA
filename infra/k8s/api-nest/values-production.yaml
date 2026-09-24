@@ -16,6 +16,10 @@ ingress:
   host: elara.app
   path: /api
   pathType: Prefix
+  tls:
+    enabled: true
+    clusterIssuer: letsencrypt-prod
+    secretName: elara-tls-api-nest
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /$1
 autoscaling:

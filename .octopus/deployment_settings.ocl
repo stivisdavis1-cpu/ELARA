@@ -1,8 +1,16 @@
 cancel_queued_tasks = true
 cancel_running_tasks = true
 
+# Mode de guidage ON : si une étape échoue (ex. healthcheck), Octopus propose un
+# "rollback guidé" en relançant la release précédente (déploiement inverse).
+default_guided_failure_mode = "On"
+
+# Jamais de déploiement vers des cibles injoignables : un échec de reachability
+# bloque la release au lieu d'avancer silencieusement.
 connectivity_policy {
     allow_deployments_to_no_targets = true
+    exclude_unhealthy_targets = true
+    skip_machine_behavior = "SkipUnavailableMachines"
 }
 
 versioning_strategy {

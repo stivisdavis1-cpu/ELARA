@@ -1,7 +1,45 @@
+# Process de déploiement ELARA — web (référence structurée pour Octopus).
+# Mirroir de .octopus/deployment_process.ocl ; à maintenir en parallèle.
+name: elara-web
+
+environments:
+  - dev
+  - staging
+  - production
+  - onpremise-template
+
 steps:
+  # 1. Déploiement du chart Helm avec les values de l'environnement ciblé
   - name: Deploy web via Helm
     action: Octopus.HelmChartUpgrade
     properties:
+      Octopus.Action.Helm.ChartSource: ProjectGitRepository
       Octopus.Action.Helm.ChartDirectory: infra/k8s/web
       Octopus.Action.Helm.ReleaseName: elara-web
-      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/web/values-#{Octopus.Environment.Name | ToLower}.yaml"
+      Octopus.Action.Helm.ResetValues: "True"
+      Octopus.Action.Helm.Timeout: "600"
+      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/web/values-#{Elara.ValuesEnv}.yaml --atomic --install --timeout=600s"
+
+  # 2. Healthcheck post-déploiement
+  - name: Vérifier la santé web
+    action: Octopus.Script
+    properties:
+      Octopus.Action.RunOnServer: false
+      Octopus.Action.Script.Syntax: Bash
+      Octopus.Action.Script.ScriptSource: Inline
+      Octopus.Action.Script.ScriptBody: |
+        set -e
+        NAMESPACE="elara-#{Octopus.Environment.Name | ToLower}"
+        kubectl rollout status deployment/elara-web-web -n "${NAMESPACE}" --timeout=300s
+        kubectl -n "${NAMESPACE}" port-forward svc/elara-web-web 3000:80 &
+        sleep 3
+        curl -fsS http://127.0.0.1:3000/ && echo "web OK"
+    worker_pool: hosted-windows
+
+  # 3. Validation humaine obligatoire avant la promotion vers production
+  - name: Validation humaine obligatoire (production)
+    action: Octopus.ManualIntervention
+    environments: [production]
+    properties:
+      Octopus.Action.ManualIntervention.Instructions: "Aucune promotion vers production n'est automatique. Recette staging obligatoire avant autorisation."
+      Octopus.Action.ManualIntervention.ResponsibleTeam: ElaraReleaseManagers

@@ -1,20 +1,140 @@
-step "hello-world-using-powershell" {
-    name = "Hello world (using PowerShell)"
+step "migrer-schema-postgresql" {
+    name = "Migrer la base de données PostgreSQL (schema + RLS + pgvector)"
+    properties = {
+        Octopus.Action.RunOnServer = "false"
+    }
 
     action {
         action_type = "Octopus.Script"
         is_required = true
         properties = {
+            Octopus.Action.RunOnServer = "false"
             Octopus.Action.Script.ScriptBody = <<-EOT
-                Write-Host 'Hello world, using PowerShell'
-                
-                #TODO: Experiment with steps of your own :)
-                
-                Write-Host '[Learn more about the types of steps available in Octopus](https://oc.to/OnboardingAddStepsLearnMore)'
-                EOT
+                set -e
+                # Applique les migrations SQL versionnées dans Infra en ordre alphabétique.
+                # Variable sensible Elara.Database.ConnectionString fournie par Octopus
+                # (jamais commitée) : postgresql://user:pass@host:5432/db
+                echo "Nombre de fichiers de migration : \$(ls -1 infra/db/migrations/*.sql | wc -l)"
+                for migration in \$(ls -1 infra/db/migrations/*.sql | sort); do
+                    echo "==> Application de \${migration}"
+                    psql "#{Elara.Database.ConnectionString}" -v ON_ERROR_STOP=1 -f "\${migration}"
+                done
+                echo "Migrations PostgreSQL appliquées avec succès."
+            EOT
             Octopus.Action.Script.ScriptSource = "Inline"
-            Octopus.Action.Script.Syntax = "PowerShell"
+            Octopus.Action.Script.Syntax = "Bash"
         }
         worker_pool = "hosted-windows"
+    }
+}
+
+step "deployer-api-nest-helm" {
+    condition = "Success"
+    name = "Déployer api-nest via Helm"
+
+    action {
+        action_type = "Octopus.HelmChartUpgrade"
+        is_required = true
+        properties = {
+            Octopus.Action.Helm.ChartSource = "ProjectGitRepository"
+            Octopus.Action.Helm.ChartDirectory = "infra/k8s/api-nest"
+            Octopus.Action.Helm.ReleaseName = "elara-api-nest"
+            Octopus.Action.Helm.ResetValues = "True"
+            Octopus.Action.Helm.Timeout = "600"
+            Octopus.Action.Helm.AdditionalArgs = "-f infra/k8s/api-nest/values-#{Elara.ValuesEnv}.yaml --atomic --install --timeout=600s"
+        }
+    }
+}
+
+step "deployer-api-ai-helm" {
+    condition = "Success"
+    name = "Déployer api-ai via Helm"
+
+    action {
+        action_type = "Octopus.HelmChartUpgrade"
+        is_required = true
+        properties = {
+            Octopus.Action.Helm.ChartSource = "ProjectGitRepository"
+            Octopus.Action.Helm.ChartDirectory = "infra/k8s/api-ai"
+            Octopus.Action.Helm.ReleaseName = "elara-api-ai"
+            Octopus.Action.Helm.ResetValues = "True"
+            Octopus.Action.Helm.Timeout = "600"
+            Octopus.Action.Helm.AdditionalArgs = "-f infra/k8s/api-ai/values-#{Elara.ValuesEnv}.yaml --atomic --install --timeout=600s"
+        }
+    }
+}
+
+step "deployer-web-helm" {
+    condition = "Success"
+    name = "Déployer web via Helm"
+
+    action {
+        action_type = "Octopus.HelmChartUpgrade"
+        is_required = true
+        properties = {
+            Octopus.Action.Helm.ChartSource = "ProjectGitRepository"
+            Octopus.Action.Helm.ChartDirectory = "infra/k8s/web"
+            Octopus.Action.Helm.ReleaseName = "elara-web"
+            Octopus.Action.Helm.ResetValues = "True"
+            Octopus.Action.Helm.Timeout = "600"
+            Octopus.Action.Helm.AdditionalArgs = "-f infra/k8s/web/values-#{Elara.ValuesEnv}.yaml --atomic --install --timeout=600s"
+        }
+    }
+}
+
+step "verifier-sante-post-deploiement" {
+    condition = "Success"
+    name = "Vérifier la santé des services post-déploiement"
+
+    action {
+        action_type = "Octopus.Script"
+        is_required = true
+        properties = {
+            Octopus.Action.RunOnServer = "false"
+            Octopus.Action.Script.ScriptBody = <<-EOT
+                set -e
+                NAMESPACE="elara-#{Octopus.Environment.Name | ToLower}"
+                echo "Namespace ciblé : \${NAMESPACE}"
+
+                # Attente jusqu'à disponibilité des 3 déploiements (rollout terminé)
+                for deploy in elara-api-nest-api-nest elara-api-ai-api-ai elara-web-web; do
+                    echo "==> Attente du rollout de \${deploy} (délai max 5 min)"
+                    kubectl rollout status deployment/\${deploy} -n "\${NAMESPACE}" --timeout=300s
+                done
+
+                # Healthchecks HTTP finaux (hors cluster via port-forward si besoin)
+                echo "==> Vérification /v1/health api-nest"
+                if kubectl -n "\${NAMESPACE}" port-forward svc/elara-api-nest-api-nest 3001:80 &
+                then
+                    sleep 3
+                    curl -fsS http://127.0.0.1:3001/v1/health && echo "api-nest OK"
+                fi
+
+                echo "==> Vérification /health api-ai"
+                if kubectl -n "\${NAMESPACE}" port-forward svc/elara-api-ai-api-ai 8000:80 &
+                then
+                    sleep 3
+                    curl -fsS http://127.0.0.1:8000/health && echo "api-ai OK"
+                fi
+            EOT
+            Octopus.Action.Script.ScriptSource = "Inline"
+            Octopus.Action.Script.Syntax = "Bash"
+        }
+        worker_pool = "hosted-windows"
+    }
+}
+
+step "validation-humaine-avant-production" {
+    condition = "Success"
+    name = "Validation humaine obligatoire (production)"
+
+    action {
+        action_type = "Octopus.ManualIntervention"
+        environments = ["production"]
+        is_required = true
+        properties = {
+            Octopus.Action.ManualIntervention.Instructions = "Aucune promotion vers production n'est automatique. Vérifiez que staging a été recetté (Partie 21) avant d'autoriser ce déploiement."
+            Octopus.Action.ManualIntervention.ResponsibleTeam = "ElaraReleaseManagers"
+        }
     }
 }

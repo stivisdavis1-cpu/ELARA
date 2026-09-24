@@ -16,11 +16,15 @@ describe('AppController (e2e)', () => {
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  it('/v1/health (GET)', () => {
     return request(app.getHttpServer())
-      .get('/')
+      .get('/v1/health')
       .expect(200)
-      .expect('Hello World!');
+      .expect((res) => {
+        expect(res.body.status).toBe('ok');
+        expect(res.body.services).toBeDefined();
+        expect(typeof res.body.services).toBe('object');
+      });
   });
 
   afterEach(async () => {

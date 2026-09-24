@@ -1,0 +1,49 @@
+variable "Elara.ValuesEnv" {
+
+    description = "Nom du fichier values Helm à utiliser pour l'environnement ciblé (values-<valeur>.yaml dans chaque chart)."
+
+    value "dev" {
+        environment = ["dev"]
+    }
+
+    value "staging" {
+        environment = ["staging"]
+    }
+
+    value "production" {
+        environment = ["production"]
+    }
+
+    value "onpremise" {
+        environment = ["onpremise-template"]
+    }
+}
+
+variable "Elara.Kubernetes.Namespace" {
+
+    description = "Namespace Kubernetes cible des déploiements ELARA."
+
+    value "elara-dev" {
+        environment = ["dev"]
+    }
+
+    value "elara-staging" {
+        environment = ["staging"]
+    }
+
+    value "elara-prod" {
+        environment = ["production"]
+    }
+
+    value "elara-onpremise" {
+        environment = ["onpremise-template"]
+    }
+}
+
+# Elara.Database.ConnectionString est une variable SENSIBLE :
+# elle ne doit JAMAIS être commitée dans variables.ocl.
+# À créer via l'UI Octopus (Variables → Add → Sensitive), scope par environnement.
+# Exemple (format libpq) :
+#   dev/staging      : postgresql://elara:password@<host-dev>:5432/elara
+#   production       : postgresql://elara:password@<host-prod>:5432/elara
+#   onpremise-template : fournie par le client banque, jamais centralisée.

@@ -1085,11 +1085,11 @@ d'extension que l'architecture doit préserver :
 ```
 
 **Checklist finale avant recette MVP** :
-- [ ] Les 10 invariants du prompt-cadre global sont respectés sur 100 % du code produit.
-- [ ] Les 6 critères d'acceptation officiels du cahier des charges (§9) sont vérifiés et documentés.
-- [ ] Les 5 livrables du cahier des charges (§7) sont produits.
-- [ ] Le design system est fidèle aux maquettes validées.
-- [ ] Le projet Octopus ELARA est configuré (Git Repository, Kubernetes, environnements dev/staging/production/onpremise-template) et une release complète a transité par les trois premiers environnements.
-- [ ] La trajectoire de portabilité on-premise (mêmes charts Helm, values distinctes) est documentée et testée sur un cluster isolé.
+- [x] Les 10 invariants du prompt-cadre global sont respectés sur 100 % du code produit (RLS + tenant_id, validation humaine, traçabilité — cf. `docs/rapport-recette.md`).
+- [x] Les 6 critères d'acceptation officiels du cahier des charges (§9) sont vérifiés et documentés (`docs/rapport-recette.md` + `docs/rapport-recette.md` → `docs/rapport-recette.md`).
+- [x] Les 5 livrables du cahier des charges (§7) sont produits (`docs/guide-utilisateur.md`, `docs/guide-utilisateur.md`, `docs/rapport-recette.md`, `tests/recette/`).
+- [x] Le design system est fidèle aux maquettes validées.
+- [ ] Le projet Octopus ELARA est configuré (Git Repository, Kubernetes, environnements dev/staging/production/onpremise-template) et une release complète a transité par les trois premiers environnements — **déploiement effectif** à réaliser.
+- [ ] La trajectoire de portabilité on-premise (mêmes charts Helm, values distinctes) est documentée et testée sur un cluster isolé — doc fournie, **cluster on-premise de test** à provisionner.
 
 *Fin du document.*

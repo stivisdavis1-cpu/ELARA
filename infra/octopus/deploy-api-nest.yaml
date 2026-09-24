@@ -1,7 +1,60 @@
+# Process de déploiement ELARA — api-nest (référence structurée pour Octopus).
+# Mirroir de .octopus/deployment_process.ocl ; à maintenir en parallèle.
+name: elara-api-nest
+
+environments:
+  - dev          # déploiement automatique à chaque merge sur main
+  - staging      # promotion manuelle depuis dev
+  - production   # promotion manuelle depuis staging + validation humaine obligatoire
+  - onpremise-template # gabarit client banque, jamais promu automatiquement
+
 steps:
+  # 1. Migrations PostgreSQL (schema + RLS + pgvector) AVANT api-nest
+  - name: Migrer la base de données PostgreSQL
+    action: Octopus.Script
+    properties:
+      Octopus.Action.RunOnServer: false
+      Octopus.Action.Script.Syntax: Bash
+      Octopus.Action.Script.ScriptSource: Inline
+      Octopus.Action.Script.ScriptBody: |
+        set -e
+        for migration in $(ls -1 infra/db/migrations/*.sql | sort); do
+          echo "==> Application de ${migration}"
+          psql "#{Elara.Database.ConnectionString}" -v ON_ERROR_STOP=1 -f "${migration}"
+        done
+    worker_pool: hosted-windows
+
+  # 2. Déploiement du chart Helm avec les values de l'environnement ciblé
   - name: Deploy api-nest via Helm
     action: Octopus.HelmChartUpgrade
     properties:
+      Octopus.Action.Helm.ChartSource: ProjectGitRepository
       Octopus.Action.Helm.ChartDirectory: infra/k8s/api-nest
       Octopus.Action.Helm.ReleaseName: elara-api-nest
-      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/api-nest/values-#{Octopus.Environment.Name | ToLower}.yaml"
+      Octopus.Action.Helm.ResetValues: "True"
+      Octopus.Action.Helm.Timeout: "600"
+      Octopus.Action.Helm.AdditionalArgs: "-f infra/k8s/api-nest/values-#{Elara.ValuesEnv}.yaml --atomic --install --timeout=600s"
+
+  # 3. Healthcheck post-déploiement (rollback partiel si échec via --atomic)
+  - name: Vérifier la santé api-nest
+    action: Octopus.Script
+    properties:
+      Octopus.Action.RunOnServer: false
+      Octopus.Action.Script.Syntax: Bash
+      Octopus.Action.Script.ScriptSource: Inline
+      Octopus.Action.Script.ScriptBody: |
+        set -e
+        NAMESPACE="elara-#{Octopus.Environment.Name | ToLower}"
+        kubectl rollout status deployment/elara-api-nest-api-nest -n "${NAMESPACE}" --timeout=300s
+        kubectl -n "${NAMESPACE}" port-forward svc/elara-api-nest-api-nest 3001:80 &
+        sleep 3
+        curl -fsS http://127.0.0.1:3001/v1/health && echo "api-nest OK"
+    worker_pool: hosted-windows
+
+  # 4. Validation humaine obligatoire avant la promotion vers production
+  - name: Validation humaine obligatoire (production)
+    action: Octopus.ManualIntervention
+    environments: [production]
+    properties:
+      Octopus.Action.ManualIntervention.Instructions: "Aucune promotion vers production n'est automatique. Recette staging obligatoire avant autorisation."
+      Octopus.Action.ManualIntervention.ResponsibleTeam: ElaraReleaseManagers
