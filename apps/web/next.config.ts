@@ -9,6 +9,10 @@ const nextConfig: NextConfig = {
         source: '/api/scanner/file/:id',
         destination: `${apiNest}/v1/scanner/documents/:id/file`,
       },
+      {
+        source: '/api/scanner/:path*',
+        destination: `${apiNest}/v1/scanner/:path*`,
+      },
     ];
   },
   /* config options here */

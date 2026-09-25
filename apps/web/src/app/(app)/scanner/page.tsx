@@ -194,7 +194,7 @@ export default function ScannerPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('http://localhost:3001/v1/scanner/documents');
+        const res = await fetch('/api/scanner/documents');
         if (!res.ok) return;
         const payload = await res.json();
         const items = Array.isArray(payload?.data) ? payload.data : [];
@@ -288,7 +288,7 @@ export default function ScannerPage() {
       formData.append('width', String(Math.round(box.w * ratioX)));
       formData.append('height', String(Math.round(box.h * ratioY)));
 
-      const response = await fetch('http://localhost:3001/v1/scanner/documents/crop-ocr', {
+      const response = await fetch('/api/scanner/documents/crop-ocr', {
         method: 'POST',
         body: formData
       });
@@ -326,7 +326,7 @@ export default function ScannerPage() {
         const formData = new FormData();
         formData.append('file', fileBlob, activeDoc.name);
         
-        const response = await fetch('http://localhost:3001/v1/scanner/documents/preview', {
+        const response = await fetch('/api/scanner/documents/preview', {
           method: 'POST',
           body: formData
         });
@@ -423,7 +423,7 @@ export default function ScannerPage() {
                 onKeyDown={async (e) => {
                   if (e.key === 'Enter') {
                     try {
-                      const res = await fetch('http://localhost:3001/v1/scanner/search?q=' + encodeURIComponent(e.currentTarget.value));
+                      const res = await fetch('/api/scanner/search?q=' + encodeURIComponent(e.currentTarget.value));
                       const data = await res.json();
                       alert(JSON.stringify(data.data || data, null, 2));
                     } catch(err) {
@@ -902,7 +902,7 @@ export default function ScannerPage() {
                     } : d));
 
                     try {
-                      const res = await fetch(`http://localhost:3001/v1/scanner/documents/${encodeURIComponent(activeDoc?.id || '')}/archive`, { method: 'POST' });
+                      const res = await fetch(`/api/scanner/documents/${encodeURIComponent(activeDoc?.id || '')}/archive`, { method: 'POST' });
                       const data = await res.json().catch(() => null);
                       if (!res.ok) throw new Error((data && data.message) || `Erreur HTTP ${res.status}`);
                       setDocuments(prev => prev.map(d => d.id === activeDoc?.id ? {

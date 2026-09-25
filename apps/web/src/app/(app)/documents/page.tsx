@@ -14,7 +14,7 @@ interface DocRow {
   extraction: any;
 }
 
-const API = 'http://localhost:3001/v1/scanner/documents';
+const API = '/api/scanner/documents';
 
 function fmtDate(v: string | null) {
   if (!v) return '—';
