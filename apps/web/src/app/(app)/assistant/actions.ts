@@ -1,12 +1,12 @@
-"use server";
+﻿"use server";
 
 import { auth } from "@/lib/auth";
 
 export async function askAssistant(question: string) {
   const session = await auth();
   
-  // En dev local, on mock un token si l'auth n'est pas complète.
-  // @ts-expect-error -- accessToken n'est pas sur le type de session par défaut
+  // En dev local, on mock un token si l'auth n'est pas complÃ¨te.
+  
   const token = session?.accessToken || "test-token"; 
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -33,8 +33,8 @@ export async function askAssistant(question: string) {
 export async function getConversationHistory() {
   const session = await auth();
 
-  // En dev local, on mock un token si l'auth n'est pas complète.
-  // @ts-expect-error -- accessToken n'est pas sur le type de session par défaut
+  // En dev local, on mock un token si l'auth n'est pas complÃ¨te.
+  
   const token = session?.accessToken || "test-token";
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";

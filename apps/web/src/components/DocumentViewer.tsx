@@ -83,6 +83,7 @@ export interface DocumentViewerProps {
 export default function DocumentViewer({ url, fileName, title, mimeType }: DocumentViewerProps) {
   const [state, setState] = useState<PreviewState>({ kind: 'loading' });
   const [pdfPage, setPdfPage] = useState(1);
+  const [thumbs, setThumbs] = useState<string[]>([]);
   const blobUrlRef = useRef('');
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
   const pdfTaskRef = useRef<PDFDocumentLoadingTask | null>(null);
@@ -161,7 +162,29 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
           if (cancelled || !doc) return;
           pdfDocRef.current = doc;
           setPdfPage(1);
+          setThumbs([]);
           setState({ kind: 'pdf', numPages: doc.numPages });
+          // Miniatures de toutes les pages (ruban de navigation) — rendues en arrière-plan.
+          (async () => {
+            const list: string[] = [];
+            for (let i = 1; i <= doc.numPages; i++) {
+              if (cancelled) break;
+              try {
+                const page = await doc.getPage(i);
+                const base = page.getViewport({ scale: 1 });
+                const scale = Math.min(0.25, 150 / base.width);
+                const vp = page.getViewport({ scale });
+                const c = document.createElement('canvas');
+                c.width = Math.floor(vp.width);
+                c.height = Math.floor(vp.height);
+                await page.render({ canvas: c, viewport: vp }).promise;
+                list.push(c.toDataURL('image/png'));
+              } catch {
+                list.push('');
+              }
+            }
+            if (!cancelled) setThumbs(list);
+          })();
           return;
         }
 
@@ -220,6 +243,7 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
       cancelled = true;
       revoke();
       destroyPdf();
+      setThumbs([]);
     };
   }, [url, fileName, mimeType, revoke, destroyPdf]);
 
@@ -276,9 +300,9 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
       )}
 
       {state.kind === 'pdf' && (
-        <div ref={canvasWrapRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'auto', background: '#52525B', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 16 }}>
+        <div ref={canvasWrapRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'auto', background: '#52525B', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 16px 8px', gap: 10 }}>
           <canvas ref={canvasRef} style={{ boxShadow: '0 6px 24px rgba(0,0,0,0.35)', background: '#fff', borderRadius: 2 }} />
-          <div style={{ position: 'sticky', top: 0, marginLeft: -0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(15,23,42,0.75)', color: '#fff', padding: '4px 8px', borderRadius: 999, fontSize: 12, alignSelf: 'flex-start' }}>
+          <div style={{ position: 'sticky', top: 0, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(15,23,42,0.75)', color: '#fff', padding: '4px 8px', borderRadius: 999, fontSize: 12, alignSelf: 'flex-start' }}>
             <button onClick={prevPage} disabled={pdfPage <= 1} style={{ background: 'transparent', border: 'none', color: pdfPage <= 1 ? 'rgba(255,255,255,0.35)' : '#fff', cursor: pdfPage <= 1 ? 'default' : 'pointer', padding: 2 }} title="Page précédente">
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -287,6 +311,36 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
+          {thumbs.length > 0 && (
+            <div style={{ position: 'sticky', bottom: 0, width: '100%', display: 'flex', gap: 6, padding: '6px 8px', background: 'rgba(15,23,42,0.85)', borderRadius: 10, overflowX: 'auto', zIndex: 10, alignItems: 'center' }}>
+              {thumbs.map((t, i) => (
+                <button
+                  key={i}
+                  onClick={() => setPdfPage(i + 1)}
+                  title={`Page ${i + 1}`}
+                  style={{
+                    flexShrink: 0,
+                    width: 46,
+                    height: 58,
+                    padding: 2,
+                    border: pdfPage === i + 1 ? '2px solid var(--teal)' : '2px solid transparent',
+                    borderRadius: 4,
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {t ? (
+                    <img src={t} alt={`Page ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#fff' }} />
+                  ) : (
+                    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: 11 }}>{i + 1}</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -52,11 +52,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           
           console.log("[AUTH] Parsed user from token:", user.email);
 
+          // Rôles (Keycloak) : realm_access.roles + resource_access.*.roles, dédupliqués.
+          const roles: string[] = [
+            ...((user.realm_access?.roles as string[]) || []),
+            ...(user.resource_access
+              ? Object.values(user.resource_access).flatMap((ra: any) => ra?.roles || [])
+              : []),
+          ];
+
           return {
             id: user.sub,
             email: user.email,
             name: user.name || `${user.given_name} ${user.family_name}`,
-            accessToken: tokens.access_token
+            accessToken: tokens.access_token,
+            roles
           };
         } catch (e) {
           console.error("[AUTH] Exception during authorize:", e);
@@ -72,13 +81,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.accessToken = (user as any).accessToken
+        token.roles = (user as any).roles || []
       }
       return token
     },
     async session({ session, token }) {
       // @ts-ignore
       session.accessToken = token.accessToken
+      // @ts-ignore
+      session.user.roles = (token as any).roles || []
       return session
     },
   },
 })
+
+declare module "next-auth" {
+  interface Session {
+    accessToken?: string;
+    user: {
+      id?: string;
+      email?: string;
+      name?: string;
+      roles?: string[];
+    };
+  }
+  interface User {
+    accessToken?: string;
+    roles?: string[];
+  }
+}

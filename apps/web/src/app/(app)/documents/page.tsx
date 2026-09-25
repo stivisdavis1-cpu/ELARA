@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
-import { FileText, Folder, X, Loader2, AlertTriangle, Search, Archive, Eye, Download } from "lucide-react";
+import { FileText, Folder, X, Loader2, AlertTriangle, Search, Archive, Eye } from "lucide-react";
 import DocumentViewer from "../../../components/DocumentViewer";
 
 interface DocRow {
@@ -240,8 +240,7 @@ export default function DocumentsPage() {
                       </div>
                     </div>
                     <div className="pv-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                      <a className="btn btn-primary teal" style={{ padding: '6px 12px', fontSize: 12, textDecoration: 'none' }} href={fileUrl} download={preview.fichier || preview.name}><Download className="w-3 h-3 inline" style={{ marginRight: 4 }} /> Télécharger</a>
-                      <a className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12, textDecoration: 'none' }} href={fileUrl} target="_blank" rel="noreferrer">Ouvrir en grand</a>
+                      <a className="btn btn-ghost" style={{ padding: '6px 10px', fontSize: 12, textDecoration: 'none' }} href={`/ged/${encodeURIComponent(preview.id)}`} target="_blank" rel="noreferrer">Ouvrir en grand</a>
                       <button className="btn btn-ghost" style={{ padding: '8px' }} onClick={() => setPreview(null)}><X className="w-4 h-4" /></button>
                     </div>
                   </div>
