@@ -859,6 +859,12 @@ export default function ScannerPage() {
               )}
 
               <div style={{ marginTop: 'auto', display: 'flex', gap: '12px', paddingTop: '24px' }}>
+                {activeDoc?.status === 'Archivé & Intégré' ? (
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, background: 'rgba(20, 184, 166, 0.1)', color: '#0F766E', fontSize: 12, fontWeight: 600 }}>
+                    <ShieldCheck className="w-4 h-4" /> Déjà archivé &amp; intégré — consultation seule
+                  </div>
+                ) : (
+                <>
                 <button 
                   className="btn btn-secondary" 
                   style={{ flex: 1, justifyContent: 'center' }}
@@ -929,6 +935,8 @@ export default function ScannerPage() {
                 >
                   Valider & Archiver
                 </button>
+                </>
+                )}
               </div>
             </div>
           </div>
