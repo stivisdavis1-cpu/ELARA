@@ -420,6 +420,54 @@ export class ScannerService {
   }
 
   /**
+   * Artifacts nécessaires à l'export (conversion PDF/Word/Image) côté serveur :
+   * binaire, MIME, nom logique, texte OCR et champs extraits.
+   */
+  async getExportArtifacts(tenantId: string, documentId: string) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    const sourceUrl = doc.archive_path || doc.lien_minio;
+    const buffer = await this.minioService.readBuffer(sourceUrl);
+    return {
+      buffer,
+      mime: this.guessMimeType(sourceUrl),
+      name: this.displayNameOf(sourceUrl),
+      statut: doc.statut_validation,
+      ocrText: doc.ocr_text || null,
+      extraction: doc.extraction_data || null,
+    };
+  }
+
+  /**
+   * Mise à jour des champs extraits d'un document (réservée aux administrateurs).
+   * Réécrit `extraction_data` (JSONB) — la visionneuse rejoue ainsi la consultation.
+   */
+  async updateExtraction(tenantId: string, documentId: string, extractedData: Record<string, unknown>) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    try {
+      await this.prisma.$executeRawUnsafe(
+        `UPDATE documents SET extraction_data = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+        JSON.stringify(extractedData),
+        documentId,
+      );
+    } catch (e: any) {
+      throw new BadRequestException(`Impossible d'enregistrer les champs : ${e.message}`);
+    }
+    this.logger.log(`Extraction mise à jour pour ${documentId} (${Object.keys(extractedData).length} champs).`);
+    return {
+      document_id: documentId,
+      updated: true,
+      modified_fields: Object.keys(extractedData),
+      extraction: extractedData,
+    };
+  }
+
+  /**
    * Valider & Archiver : conserve le fichier dans un dossier diskgroup sécurisé
    * (copie immuable, isolée par tenant) et le référence par un index logique —
    * en mémoire (accès instantané) puis persisté en BDD (retrouvabilité).
@@ -509,7 +557,8 @@ export class ScannerService {
     const rows = (await this.prisma.$queryRawUnsafe(
       `SELECT id, tenant_id, lien_minio, type_document, score_confiance, niveau_risque,
               statut_validation, hash_document, created_at, updated_at, deleted_at,
-              archive_path, archive_checksum, archive_size, archived_at
+              archive_path, archive_checksum, archive_size, archived_at,
+              extraction_data, ocr_text
          FROM documents WHERE id = $1 LIMIT 1`,
       documentId,
     )) as any[];
@@ -575,9 +624,10 @@ export class ScannerService {
   private displayNameOf(lienMinio: string): string {
     let name = lienMinio || '';
     if (name.startsWith('local://')) name = name.slice('local://'.length);
-    const slash = name.indexOf('/');
-    if (slash >= 0) name = name.slice(slash + 1);
-    return name.replace(/^\d+-/, '').replace(/_/g, ' ') || 'Document';
+    if (name.startsWith('archive://')) name = name.slice('archive://'.length);
+    const parts = name.split('/').filter(Boolean);
+    if (parts.length) name = parts[parts.length - 1];
+    return name.replace(/^[a-f0-9]{8,}-/i, '').replace(/_/g, ' ') || 'Document';
   }
 
   private buildArchiveRecord(doc: any): any {

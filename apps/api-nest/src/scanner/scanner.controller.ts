@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, UseGuards, UseInterceptors, UploadedFile, UploadedFiles, Req, Res, StreamableFile } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, UploadedFiles, Req, Res, StreamableFile, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, resolve } from 'path';
@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { TenantInterceptor } from '../tenant/tenant.interceptor.js';
 import { AuditInterceptor } from '../audit/audit.interceptor.js';
 import { ScannerService } from './scanner.service.js';
+import { ExportService } from './export.service.js';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service.js';
 import { SearchService } from './search.service.js';
@@ -19,6 +20,36 @@ function docxToPdfScript(): string {
   return local;
 }
 
+/**
+ * Vérifie que le Bearer JWT (Keycloak) porte bien un rôle admin/administrateur.
+ * Le guard JWT étant contourné hors production, la vérification est faite ici
+ * sur le jeton brut — indépendant du bypass.
+ */
+function requireAdmin(req: any): boolean {
+  const header: string = req?.headers?.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return false;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return false;
+    let json: string;
+    try {
+      json = Buffer.from(parts[1], 'base64url').toString('utf-8');
+    } catch {
+      json = Buffer.from(parts[1], 'base64').toString('utf-8');
+    }
+    const payload = JSON.parse(json);
+    const roles: string[] = [
+      ...((payload?.realm_access?.roles as string[]) || []),
+      ...((payload?.resource_access?.['elara-web']?.roles as string[]) || []),
+      ...((payload?.resource_access?.['account']?.roles as string[]) || []),
+    ];
+    return roles.includes('admin') || roles.includes('administrateur');
+  } catch {
+    return false;
+  }
+}
+
 @ApiTags('Scanner')
 @ApiBearerAuth()
 @Controller('v1/scanner')
@@ -26,7 +57,8 @@ export class ScannerController {
   constructor(
     private readonly scannerService: ScannerService,
     private readonly rabbitmqService: RabbitMQService,
-    private readonly searchService: SearchService
+    private readonly searchService: SearchService,
+    private readonly exportService: ExportService
   ) {}
 
   @Post('documents')
@@ -303,5 +335,37 @@ export class ScannerController {
       'Cache-Control': 'private, max-age=60',
     });
     return new StreamableFile(buffer);
+  }
+
+  @Patch('documents/:id')
+  @ApiOperation({ summary: 'Mettre à jour les champs extraits d\'un document (admin requis)' })
+  @ApiBearerAuth()
+  async updateDocumentFields(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    if (!requireAdmin(req)) {
+      throw new UnauthorizedException('Réservé aux administrateurs.');
+    }
+    const tenantId = req.user?.tenantId || 'test-tenant';
+    const extractedData = body?.extractedData ?? body ?? {};
+    if (typeof extractedData !== 'object' || Array.isArray(extractedData)) {
+      throw new BadRequestException('extractedData doit être un objet clé/valeur.');
+    }
+    return this.scannerService.updateExtraction(tenantId, id, extractedData);
+  }
+
+  @Get('documents/:id/export')
+  @ApiOperation({ summary: 'Exporter un document vers PDF, Word (docx) ou Image (png) — conversion côté serveur' })
+  async exportDocument(@Param('id') id: string, @Req() req: any, @Query('format') format?: string) {
+    const tenantId = req.user?.tenantId || 'test-tenant';
+    const wanted = (format || 'pdf').toLowerCase();
+    if (!['pdf', 'docx', 'png'].includes(wanted)) {
+      throw new BadRequestException('format doit être pdf | docx | png');
+    }
+    const result = await this.exportService.convert(tenantId, id, wanted as any);
+    this.logExport(wanted, id);
+    return result;
+  }
+
+  private logExport(format: string, id: string) {
+    try { console.log(`[Export] ${format} du document ${id}`); } catch { /* ignore */ }
   }
 }
