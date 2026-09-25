@@ -46,29 +46,39 @@ export default function DocumentsPage() {
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState<DocRow | null>(null);
   const [error, setError] = useState('');
+  const [detail, setDetail] = useState('');
 
   const load = useCallback(async () => {
-    try {
-      const res = await fetch(API);
-      if (!res.ok) throw new Error('Réponse inattendue');
-      const payload = await res.json();
-      const items = Array.isArray(payload?.data) ? payload.data : [];
-      setDocs(items.map((it: any) => ({
-        id: it.document_id,
-        name: it.nom || it.fichier || 'Document',
-        fichier: it.fichier || '',
-        type: it.type || null,
-        statut: it.statut || 'En attente',
-        date: it.date,
-        archive: it.archive || null,
-        extraction: it.extraction || null,
-      })));
-      setError('');
-    } catch (e: any) {
-      setError('Impossible de charger les documents depuis la GED.');
-    } finally {
-      setLoading(false);
+    setLoading(true);
+    let last: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(API, { cache: 'no-store' });
+        if (!res.ok) throw new Error('Réponse inattendue (HTTP ' + res.status + ')');
+        const payload = await res.json();
+        const items = Array.isArray(payload?.data) ? payload.data : [];
+        setDocs(items.map((it: any) => ({
+          id: it.document_id,
+          name: it.nom || it.fichier || 'Document',
+          fichier: it.fichier || '',
+          type: it.type || null,
+          statut: it.statut || 'En attente',
+          date: it.date,
+          archive: it.archive || null,
+          extraction: it.extraction || null,
+        })));
+        setError('');
+        setDetail('');
+        setLoading(false);
+        return;
+      } catch (e: unknown) {
+        last = e;
+        await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+      }
     }
+    setError('Impossible de charger les documents depuis la GED.');
+    setDetail(last instanceof Error ? last.message : String(last));
+    setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -112,8 +122,13 @@ export default function DocumentsPage() {
       </div>
 
       {error && (
-        <div style={{ background: 'rgba(162, 59, 59, 0.05)', border: '1px solid rgba(162, 59, 59, 0.2)', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', display: 'flex', gap: '8px', fontSize: '13px', color: 'var(--red)' }}>
-          <AlertTriangle className="w-4 h-4" style={{ flexShrink: 0 }} /> {error}
+        <div style={{ background: 'rgba(162, 59, 59, 0.05)', border: '1px solid rgba(162, 59, 59, 0.2)', padding: '12px 16px', borderRadius: '10px', marginBottom: '16px', display: 'flex', gap: '12px', fontSize: '13px', color: 'var(--red)', alignItems: 'center' }}>
+          <AlertTriangle className="w-4 h-4" style={{ flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            {error}
+            {detail && <div style={{ fontSize: 11, fontFamily: 'monospace', color: 'rgba(162, 59, 59, 0.7)', marginTop: 4 }}>{detail}</div>}
+          </div>
+          <button className="btn btn-primary teal" style={{ padding: '6px 12px', fontSize: 12 }} onClick={() => load()}>Réessayer</button>
         </div>
       )}
 
