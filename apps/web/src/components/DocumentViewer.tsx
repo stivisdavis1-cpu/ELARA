@@ -3,6 +3,7 @@ import * as React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { FileText, Download, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { PDFDocumentProxy, PDFDocumentLoadingTask } from "pdfjs-dist";
+import { fetchFileBytes, rawFileUrl } from "@/lib/fileFetch";
 
 // Chargé dynamiquement dans l'effet (jamais évalué au build/prérendu : pdf.js v6
 // requiert `Iterator`, absent de Node 20 utilisé dans l'image Docker).
@@ -19,7 +20,7 @@ type PreviewState =
   | { kind: 'text'; text: string }
   | { kind: 'csv'; head: string[]; rows: string[][] }
   | { kind: 'pptx'; slides: string[][] }
-  | { kind: 'unsupported' };
+  | { kind: 'unsupported'; error?: string };
 
 /** Déduit un type MIME depuis le nom de fichier (sert à choisir le rendu). */
 export function mimeFromName(fileName?: string): string | undefined {
@@ -138,18 +139,16 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
     (async () => {
       setState({ kind: 'loading' });
       try {
-        const res = await fetch(url);
-        if (!res.ok || cancelled) { if (!cancelled) setState({ kind: 'unsupported' }); return; }
+        // Récupération « safe » : jamais de réponse `application/pdf` au fetch().
+        const { buffer: buf, mime: servedMime } = await fetchFileBytes(url);
+        if (cancelled) return;
 
-        const servedMime = (res.headers.get('Content-Type') || '').split(';')[0].trim();
         const decided = decideFromServed(servedMime);
         const kind: typeof kindFromName | 'unsupported' = decided === 'unsupported' ? kindFromName : decided;
 
-        if (!kind) { setState({ kind: 'unsupported' }); return; }
+        if (!kind) { setState({ kind: 'unsupported', error: `type non reconnu (mime="${servedMime}")` }); return; }
 
         if (kind === 'pdf') {
-          const buf = await res.arrayBuffer();
-          if (cancelled) return;
           destroyPdf();
           // Rendu 100% côté client via pdf.js (canvas) : aucun visualiseur natif n'est
           // sollicité, donc aucun réglage navigateur ne peut déclencher un téléchargement.
@@ -167,16 +166,13 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
         }
 
         if (kind === 'image') {
-          const blob = await res.blob();
+          const blob = new Blob([buf], { type: servedMime });
           if (cancelled || !blob.size) return;
           revoke();
           blobUrlRef.current = URL.createObjectURL(blob);
           setState({ kind: 'image', blobUrl: blobUrlRef.current });
           return;
         }
-
-        const buf = await res.arrayBuffer();
-        if (cancelled) return;
 
         if (kind === 'docx') {
           const mammoth = (await import('mammoth')).default;
@@ -212,8 +208,11 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
           const text = new TextDecoder('utf-8').decode(buf);
           if (!cancelled) setState({ kind: 'text', text });
         }
-      } catch {
-        if (!cancelled) setState({ kind: 'unsupported' });
+      } catch (e) {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : String(e);
+          setState({ kind: 'unsupported', error: msg });
+        }
       }
     })();
 
@@ -340,8 +339,13 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
           <FileText className="w-16 h-16" style={{ margin: '0 auto 16px', color: 'var(--border)' }} />
           Aperçu non disponible pour ce format.<br />
           Téléchargez le fichier pour le consulter.
+          {state.error && (
+            <div style={{ marginTop: 8, fontSize: 11, fontFamily: 'monospace', color: 'rgba(162,59,59,0.75)', maxWidth: 420, marginLeft: 'auto', marginRight: 'auto', wordBreak: 'break-word' }}>
+              {state.error}
+            </div>
+          )}
           <div style={{ marginTop: 16 }}>
-            <a className="btn btn-primary teal" style={{ padding: '6px 12px', fontSize: 12, textDecoration: 'none' }} href={url} download={fileName}>
+            <a className="btn btn-primary teal" style={{ padding: '6px 12px', fontSize: 12, textDecoration: 'none' }} href={rawFileUrl(url)} download={fileName}>
               <Download className="w-3 h-3 inline" style={{ marginRight: 4 }} /> Télécharger
             </a>
           </div>

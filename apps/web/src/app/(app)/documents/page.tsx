@@ -213,6 +213,7 @@ export default function DocumentsPage() {
           <div className="card pv-card" style={{ width: 'min(1100px, 94vw)', height: 'min(780px, 90vh)', padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
             {(() => {
               const fileUrl = `/api/scanner/file/${encodeURIComponent(preview.id)}`;
+              const previewUrl = `${fileUrl}?as=base64`;
               return (
                 <>
                   <div className="pv-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 18px', borderBottom: '1px solid var(--line)', gap: 12 }}>
@@ -230,7 +231,7 @@ export default function DocumentsPage() {
                     </div>
                   </div>
                   <div style={{ height: 'calc(min(780px, 90vh) - 65px)', overflow: 'hidden' }}>
-                    <DocumentViewer url={fileUrl} fileName={preview.fichier || preview.name} title={preview.name} />
+                    <DocumentViewer url={previewUrl} fileName={preview.fichier || preview.name} title={preview.name} />
                   </div>
                 </>
               );

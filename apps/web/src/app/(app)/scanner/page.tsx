@@ -6,6 +6,7 @@ import DocumentViewer from "../../../components/DocumentViewer";
 import { FileText, X, AlertTriangle, Menu, Crop, Landmark, Building2, ShieldCheck, ScrollText, CalendarDays, Tags, Scale } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
+import { fetchFileBytes } from "../../../lib/fileFetch";
 
 interface ScannedDocument {
   id: string;
@@ -211,7 +212,7 @@ export default function ScannerPage() {
               type: it.type || undefined,
               alert: (it.niveau_risque ?? 0) >= 7,
               mimeType: mimeFromName(it.fichier || it.nom) as any,
-              localFileUrl: `/api/scanner/file/${encodeURIComponent(it.document_id)}`,
+              localFileUrl: `/api/scanner/file/${encodeURIComponent(it.document_id)}?as=base64`,
               extractedData: (() => {
                 const base: Record<string, string> = {};
                 if (it.extraction && typeof it.extraction === 'object') {
@@ -274,7 +275,8 @@ export default function ScannerPage() {
     }));
 
     try {
-      const fileBlob = await fetch(doc.localFileUrl).then(r => r.blob());
+      const { buffer, mime } = await fetchFileBytes(doc.localFileUrl);
+      const fileBlob = new Blob([buffer], { type: mime });
       const formData = new FormData();
       formData.append('file', fileBlob, doc.name);
       
@@ -319,7 +321,8 @@ export default function ScannerPage() {
   const handleToggleDrawingMode = async () => {
     if (!isDrawingMode && activeDoc?.localFileUrl) {
       try {
-        const fileBlob = await fetch(activeDoc.localFileUrl).then(r => r.blob());
+        const { buffer, mime } = await fetchFileBytes(activeDoc.localFileUrl);
+        const fileBlob = new Blob([buffer], { type: mime });
         const formData = new FormData();
         formData.append('file', fileBlob, activeDoc.name);
         

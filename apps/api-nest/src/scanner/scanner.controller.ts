@@ -179,10 +179,17 @@ export class ScannerController {
   }
 
   @Get('documents/:id/file')
-  @ApiOperation({ summary: 'Streaming du fichier d\'un document (fichier de travail ou copie d\'archive diskgroup)' })
+  @ApiOperation({ summary: 'Streaming du fichier d\'un document (fichier de travail ou copie d\'archive diskgroup). ?as=base64 renvoie un JSON sûr (aucun application/pdf) pour l\'aperçu navigateur.' })
   async getDocumentFile(@Param('id') id: string, @Req() req: any, @Res({ passthrough: true }) res: any) {
     const tenantId = req.user?.tenantId || 'test-tenant';
     const { buffer, type_document } = await this.scannerService.downloadDocumentFile(tenantId, id);
+    if (req.query.as === 'base64') {
+      res.set({
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      return { mime: type_document, data: buffer.toString('base64') };
+    }
     res.set({
       'Content-Type': type_document,
       'Content-Disposition': `inline; filename="${id}"`,
