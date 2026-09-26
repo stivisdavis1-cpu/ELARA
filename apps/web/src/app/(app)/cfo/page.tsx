@@ -1,70 +1,58 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { formatCFA } from "@/lib/utils";
-import { getSyntheseTresorerie, triggerTaxAudit, getBFR, getAnomalies } from "./actions";
-
-interface SyntheseTresorerie {
-  encaissements_totaux: number;
-  sorties_totales: number;
-  solde_theorique: number;
-}
-
-interface BfrData {
-  creances_clients: number;
-  valeur_stocks: number;
-  dettes_fournisseurs: number;
-  bfr: number;
-}
-
-interface TaxRuleResult {
-  pays_code_iso?: string;
-  tva?: { taux_standard: number; date_verification: string; source_url?: string };
-  cotisations_sociales?: Record<string, number>;
-}
-
-interface TaxAuditResult {
-  pays_traites: string[];
-  mises_a_jour: TaxRuleResult[];
-  a_verifier_manuellement: unknown[];
-  non_disponibles: unknown[];
-  message?: string;
-}
-
-interface Anomalie {
-  id: string;
-  message: string;
-  type: string;
-  lien?: string;
-}
+import React, { useState, useEffect, useCallback } from "react";
+import { formatCFA, toNum } from "@/lib/utils";
+import {
+  triggerTaxAudit,
+  getCfoData,
+} from "@/lib/ged-api";
+import type {
+  CfoSynthese,
+  CfoBfr,
+  CfoRunway,
+  BalanceAgee,
+  TvaEstimee,
+  AnomalieDoc,
+  TaxAuditResult,
+} from "@/lib/ged-api";
 
 export default function CfoPage() {
-  const [tresorerie, setTresorerie] = useState<SyntheseTresorerie | null>(null);
-  const [bfrData, setBfrData] = useState<BfrData | null>(null);
+  const [tresorerie, setTresorerie] = useState<CfoSynthese | null>(null);
+  const [bfrData, setBfrData] = useState<CfoBfr | null>(null);
+  const [runway, setRunway] = useState<CfoRunway | null>(null);
+  const [balanceAgee, setBalanceAgee] = useState<BalanceAgee | null>(null);
+  const [tva, setTva] = useState<TvaEstimee | null>(null);
   const [taxRules, setTaxRules] = useState<TaxAuditResult | null>(null);
-  const [anomalies, setAnomalies] = useState<Anomalie[]>([]);
+  const [anomalies, setAnomalies] = useState<AnomalieDoc[]>([]);
   const [isAuditing, setIsAuditing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const d = await getCfoData();
+      setTresorerie(d.synthese);
+      setBfrData(d.bfr);
+      setRunway(d.runway);
+      setBalanceAgee(d.balance);
+      setTva(d.tva);
+      setAnomalies(d.anomalies);
+      setError(d.error);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    // On charge la synthèse de trésorerie au montage
-    getSyntheseTresorerie()
-      .then((data) => setTresorerie(data))
-      .catch((err) => console.error("Failed to load tresorerie", err));
-
-    getBFR()
-      .then((data) => setBfrData(data))
-      .catch((err) => console.error("Failed to load bfr", err));
-
-    getAnomalies()
-      .then((data) => setAnomalies(data))
-      .catch((err) => console.error("Failed to load anomalies", err));
-  }, []);
+    void Promise.resolve().then(() => load());
+  }, [load]);
 
   const handleAudit = async () => {
     setIsAuditing(true);
     try {
       const result = await triggerTaxAudit(["CM"]);
-      // On suppose que le backend renvoie un objet avec les règles ou un message de succès
       setTaxRules(result);
     } catch (error) {
       console.error(error);
@@ -74,11 +62,23 @@ export default function CfoPage() {
     }
   };
 
-  const getSoldeActuel = () => tresorerie?.solde_theorique || 0;
-  const getSoldeEstime = () => tresorerie?.solde_theorique || 1840000;
-  const regleFiscale: TaxRuleResult | null =
-    taxRules?.mises_a_jour?.[0] ??
-    (taxRules && 'tva' in taxRules ? (taxRules as TaxRuleResult) : null);
+  const solde = tresorerie?.solde_theorique ?? 0;
+  const soldeDisplay = loading ? "Chargement..." : formatCFA(solde);
+  const runwayLabel =
+    loading
+      ? "—"
+      : runway?.runway_en_mois == null
+        ? "Illimité"
+        : `${runway.runway_en_mois} mois`;
+  const totalArriere = loading
+    ? 0
+    : (balanceAgee?.["0_30j"] ?? 0) +
+      (balanceAgee?.["31_60j"] ?? 0) +
+      (balanceAgee?.["61_90j"] ?? 0) +
+      (balanceAgee?.["90j_plus"] ?? 0);
+
+  const regleFiscale: TaxAuditResult["mises_a_jour"][number] | null =
+    taxRules?.mises_a_jour?.[0] ?? null;
 
   return (
     <section className="view" id="v-cfo">
@@ -100,9 +100,17 @@ export default function CfoPage() {
           <p className="page-sub">Analyse financière continue à partir de vos documents et transactions.</p>
         </div>
         <div className="topbar-actions">
-          <button className="btn btn-primary teal transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98]">Générer le rapport</button>
+          <button className="btn btn-primary teal transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98]" style={{ cursor: "pointer" }} onClick={() => { setLoading(true); setError(null); void load(); }} disabled={loading}>
+            {loading ? "Chargement..." : "Actualiser"}
+          </button>
         </div>
       </div>
+
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: "10px", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "var(--red)", fontSize: "13px", marginBottom: "16px" }}>
+          Impossible de charger les données financières — {error}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "18px" }}>
         <span className="pill pill-info" style={{ padding: "7px 14px", cursor: "pointer" }}>Trésorerie</span>
@@ -113,35 +121,43 @@ export default function CfoPage() {
       <div className="grid g2" style={{ marginBottom: "16px" }}>
         <div className="card transition-all duration-300 ease-out hover:shadow-[0_12px_30px_rgba(0,0,0,0.06)] hover:-translate-y-1">
           <div className="section-title">Évolution de la trésorerie</div>
-          <div className="section-sub">Solde théorique et projection à 30 jours (estimation IA)</div>
+          <div className="section-sub">Solde théorique (encaissements − sorties) et projection mensuelle</div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "20px" }}>
             <div style={{ padding: "15px", background: "var(--green-bg)", borderRadius: "12px", border: "1px solid var(--green)" }}>
               <div style={{ fontSize: "12px", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase" }}>Solde de trésorerie</div>
               <div style={{ fontSize: "24px", fontWeight: 700, color: "var(--teal-deep)" }}>
-                {tresorerie ? formatCFA(getSoldeActuel()) : "Chargement..."}
+                {soldeDisplay}
               </div>
             </div>
 
             <div style={{ display: "flex", gap: "10px" }}>
               <div style={{ flex: 1, padding: "12px", background: "var(--paper)", borderRadius: "12px", border: "1px solid var(--line)" }}>
                 <div style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 700 }}>Encaissements</div>
-                <div style={{ fontSize: "15px", fontWeight: 700 }}>{tresorerie ? formatCFA(tresorerie.encaissements_totaux) : "-"}</div>
+                <div style={{ fontSize: "15px", fontWeight: 700 }}>{loading ? "-" : formatCFA(toNum(tresorerie?.encaissements_totaux))}</div>
               </div>
               <div style={{ flex: 1, padding: "12px", background: "var(--paper)", borderRadius: "12px", border: "1px solid var(--line)" }}>
                 <div style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 700 }}>Sorties</div>
-                <div style={{ fontSize: "15px", fontWeight: 700 }}>{tresorerie ? formatCFA(tresorerie.sorties_totales) : "-"}</div>
+                <div style={{ fontSize: "15px", fontWeight: 700 }}>{loading ? "-" : formatCFA(toNum(tresorerie?.sorties_totales))}</div>
+              </div>
+              <div style={{ flex: 1, padding: "12px", background: "var(--paper)", borderRadius: "12px", border: "1px solid var(--line)" }}>
+                <div style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 700 }}>Runway</div>
+                <div style={{ fontSize: "15px", fontWeight: 700 }}>{runwayLabel}</div>
               </div>
             </div>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "14px", padding: "12px 14px", borderRadius: "9px", background: "var(--amber-bg)" }}>
             <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--teal-deep)" }}>
-              Projection à 30 j : solde estimé {formatCFA(getSoldeEstime())}
+              {runway?.runway_en_mois == null
+                ? "Aucune dépense enregistrée — survie illimitée à l\'état actuel."
+                : `Projection : solde ${formatCFA(runway.solde_actuel)} / burn ${formatCFA(toNum(runway.cash_burn_mensuel_estime))}/mois`}
             </div>
-            <span style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--amber)", fontFamily: "var(--font-heading)" }}>
-              Estimation IA
-            </span>
+            {runway?.alerte === "CRITIQUE" && (
+              <span style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--red)", fontFamily: "var(--font-heading)" }}>
+                Runway critique
+              </span>
+            )}
           </div>
         </div>
 
@@ -153,24 +169,63 @@ export default function CfoPage() {
             <div style={{ padding: "15px", background: "var(--paper)", borderRadius: "12px", border: "1px solid var(--line)" }}>
               <div style={{ fontSize: "12px", color: "var(--text-dim)", fontWeight: 700, textTransform: "uppercase" }}>BFR Actuel</div>
               <div style={{ fontSize: "24px", fontWeight: 700, color: "var(--ink)" }}>
-                {bfrData ? formatCFA(bfrData.bfr) : "Chargement..."}
+                {loading ? "Chargement..." : formatCFA(toNum(bfrData?.bfr))}
               </div>
             </div>
 
             <div style={{ display: "flex", gap: "10px" }}>
               <div style={{ flex: 1, padding: "12px", background: "var(--paper)", borderRadius: "12px", border: "1px solid var(--line)" }}>
                 <div style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 700 }}>Créances Clients</div>
-                <div style={{ fontSize: "15px", fontWeight: 700 }}>{bfrData ? formatCFA(bfrData.creances_clients) : "-"}</div>
+                <div style={{ fontSize: "15px", fontWeight: 700 }}>{loading ? "-" : formatCFA(toNum(bfrData?.creances_clients))}</div>
               </div>
               <div style={{ flex: 1, padding: "12px", background: "var(--paper)", borderRadius: "12px", border: "1px solid var(--line)" }}>
                 <div style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 700 }}>Dettes Frns.</div>
-                <div style={{ fontSize: "15px", fontWeight: 700 }}>{bfrData ? formatCFA(bfrData.dettes_fournisseurs) : "-"}</div>
+                <div style={{ fontSize: "15px", fontWeight: 700 }}>{loading ? "-" : formatCFA(toNum(bfrData?.dettes_fournisseurs))}</div>
               </div>
               <div style={{ flex: 1, padding: "12px", background: "var(--paper)", borderRadius: "12px", border: "1px solid var(--line)" }}>
                 <div style={{ fontSize: "11px", color: "var(--text-dim)", fontWeight: 700 }}>Stocks</div>
-                <div style={{ fontSize: "15px", fontWeight: 700 }}>{bfrData ? formatCFA(bfrData.valeur_stocks) : "-"}</div>
+                <div style={{ fontSize: "15px", fontWeight: 700 }}>{loading ? "-" : formatCFA(toNum(bfrData?.valeur_stocks))}</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="card transition-all duration-300 ease-out hover:shadow-[0_12px_30px_rgba(0,0,0,0.06)] hover:-translate-y-1">
+          <div className="section-title">Balance âgée & TVA estimée</div>
+          <div className="section-sub">Créances en retard et position TVA (OHADA / CEMAC)</div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "16px" }}>
+            {loading ? (
+              <div style={{ padding: "12px", borderRadius: "9px", background: "var(--paper)", border: "1px solid var(--line)", fontSize: "13px" }}>Chargement...</div>
+            ) : (
+              <>
+                <div>
+                  {[
+                    { label: "0 — 30 jours", value: toNum(balanceAgee?.["0_30j"]), color: "var(--teal)" },
+                    { label: "31 — 60 jours", value: toNum(balanceAgee?.["31_60j"]), color: "var(--amber)" },
+                    { label: "61 — 90 jours", value: toNum(balanceAgee?.["61_90j"]), color: "var(--amber)" },
+                    { label: "+ 90 jours", value: toNum(balanceAgee?.["90j_plus"]), color: "var(--red)" },
+                  ].map((b) => (
+                    <div key={b.label} style={{ display: "flex", justifyContent: "space-between", borderBottom: "1px solid var(--line-soft)", padding: "7px 2px", fontSize: "13px" }}>
+                      <span style={{ color: "var(--text-dim)" }}>{b.label}</span>
+                      <span className="mono" style={{ fontWeight: 700, color: b.value > 0 ? b.color : "var(--text-faint)" }}>{formatCFA(b.value)}</span>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 2px 0", fontSize: "13px" }}>
+                    <span style={{ fontWeight: 700 }}>Total en retard</span>
+                    <span className="mono" style={{ fontWeight: 700 }}>{formatCFA(totalArriere)}</span>
+                  </div>
+                </div>
+                <div style={{ padding: "12px", borderRadius: "9px", background: "var(--paper)", border: "1px solid var(--line)" }}>
+                  <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "6px" }}>TVA estimée</div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "4px" }}>
+                    <span style={{ color: "var(--text-dim)" }}>Solde TVA</span>
+                    <span className="mono" style={{ fontWeight: 700 }}>{formatCFA(toNum(tva?.solde_tva))}</span>
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>{tva?.conseil ?? "Provisionnez suivant le résultat."}</div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -186,7 +241,7 @@ export default function CfoPage() {
               onClick={handleAudit}
               disabled={isAuditing}
               className="btn btn-primary transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98]"
-              style={{ width: "100%", justifyContent: "center" }}
+              style={{ width: "100%", justifyContent: "center", cursor: "pointer" }}
             >
               {isAuditing ? (
                 <>
@@ -200,9 +255,9 @@ export default function CfoPage() {
             {regleFiscale && regleFiscale.tva && (
               <div style={{ padding: "12px", borderRadius: "9px", background: "var(--paper)", border: "1px solid var(--line)" }}>
                 <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "8px" }}>
-                  Taux Applicables{regleFiscale.pays_code_iso ? ` (${regleFiscale.pays_code_iso})` : ""}{' '}
+                  Taux Applicables{regleFiscale.pays_code_iso ? ` (${regleFiscale.pays_code_iso})` : ""}{" "}
                   <span style={{ fontWeight: 400, color: "var(--text-dim)" }}>
-                    Mis à jour le {new Date(regleFiscale.tva.date_verification).toLocaleDateString('fr-FR')}
+                    Mis à jour le {new Date(regleFiscale.tva.date_verification).toLocaleDateString("fr-FR")}
                   </span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", marginBottom: "4px" }}>
@@ -220,8 +275,14 @@ export default function CfoPage() {
 
             {taxRules && taxRules.pays_traites.length > 0 && !regleFiscale?.tva && (
               <div style={{ padding: "10px 12px", borderRadius: "8px", background: "var(--green-bg)", border: "1px solid var(--green)", fontSize: "13px" }}>
-                Audit terminé — {taxRules.pays_traites.join(', ')} :{" "}
+                Audit terminé — {taxRules.pays_traites.join(", ")} :{" "}
                 {taxRules.mises_a_jour.length} règle(s) mise(s) à jour, {taxRules.non_disponibles.length} indisponible(s).
+              </div>
+            )}
+
+            {!loading && anomalies && anomalies.length === 0 && (
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "var(--green-bg)", border: "1px solid var(--green)", fontSize: "13px", color: "var(--ink-2)" }}>
+                Aucune anomalie détectée sur les documents actuellement en base.
               </div>
             )}
 
@@ -253,7 +314,6 @@ export default function CfoPage() {
           </div>
         </div>
       </div>
-
     </section>
   );
 }

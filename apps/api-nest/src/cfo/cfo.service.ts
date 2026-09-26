@@ -71,20 +71,23 @@ export class CfoService {
   }
 
   async getCashRunway(tenantId: string) {
-    // Runway = Solde Théorique / Moyenne des dépenses mensuelles (Cash Burn)
+    // Runway = Solde Théorique / Moyenne des dépenses mensuelles (Cash Burn).
+    // Sans historique de dépenses, le runway est indéterminé (null) plutôt que
+    // simulé : les tableaux de bord affichent l'état réel de la base.
     const synthese = await this.getSyntheseTresorerie(tenantId);
-    
-    // Simplification MVP : Cash burn fixe simulé si aucune dépense
-    const sorties = synthese.sorties_totales;
-    const cashBurnMensuel = sorties > 0 ? (sorties / 12) : 5000; // Mock de 5000 / mois si pas d'historique
 
-    const runwayMois = synthese.solde_theorique > 0 ? (synthese.solde_theorique / cashBurnMensuel) : 0;
+    const sorties = synthese.sorties_totales;
+    const cashBurnMensuel = sorties > 0 ? (sorties / 12) : 0;
+
+    const runwayMois = cashBurnMensuel > 0 && synthese.solde_theorique > 0
+      ? Number((synthese.solde_theorique / cashBurnMensuel).toFixed(1))
+      : null;
 
     return {
       solde_actuel: synthese.solde_theorique,
       cash_burn_mensuel_estime: cashBurnMensuel,
-      runway_en_mois: Number(runwayMois.toFixed(1)),
-      alerte: runwayMois < 3 ? 'CRITIQUE' : 'OK'
+      runway_en_mois: runwayMois,
+      alerte: runwayMois === null ? 'OK' : (runwayMois < 3 ? 'CRITIQUE' : 'OK')
     };
   }
 

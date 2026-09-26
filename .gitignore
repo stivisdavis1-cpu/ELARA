@@ -54,6 +54,7 @@ tiny.png
 apps/web/*.py
 apps/web/dump_views.js
 apps/web/views_dump.json
+apps/web/lint*.json
 
 # --- État local des outils (Supabase CLI, etc.) ---
 supabase/.temp/
