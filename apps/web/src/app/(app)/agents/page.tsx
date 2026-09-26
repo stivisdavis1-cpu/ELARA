@@ -1,7 +1,10 @@
-﻿import React from "react";
+﻿import { Portee } from "@/components/page-actions";
+import { BoutonWebhookLive } from "@/components/webhook-live";
+import React from "react";
 
 export default function AgentsPage() {
   return (
+    <>
     <div dangerouslySetInnerHTML={{ __html: `<section class="view" id="v-agents">
 <div class="topbar">
     <div><div class="eyebrow"><svg class="wave-rule" viewBox="0 0 46 14" fill="none"><path d="M0 7h4L6 2l4 10 3-9 2 6 3-6 3 6 2-6 3 9 4-10 2 5h4" stroke="url(#wg)" stroke-width="1.4" stroke-linecap="round" fill="none"></path><defs><linearGradient id="wg" x1="0" y1="0" x2="46" y2="0"><stop stop-color="#A9761F"></stop><stop offset="1" stop-color="#1A4A3C"></stop></linearGradient></defs></svg><span>Écosystème Avancé</span></div>
@@ -122,6 +125,10 @@ export default function AgentsPage() {
   <div style="font-size:11.5px;color:var(--text-dim);margin-top:10px;">Ce même format sera utilisé pour Assistant Commercial, Assistant Opérationnel, puis pour tout futur agent partenaire ou tiers — c’est la seule porte d’entrée dans la plateforme.</div>
 </div>
 </section>` }} />
+    <Portee selector=".topbar-actions">
+      <BoutonWebhookLive />
+    </Portee>
+  </>
   );
 }
 

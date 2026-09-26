@@ -187,6 +187,113 @@ main.canvas{
   transition:all 0.3s ease-out;
 }
 .btn-live-stream:hover{background:color-mix(in srgb, var(--green-bright) 20%, transparent); transform:translateY(-1px) scale(1.02);}
+.btn-live-stream[data-actif="true"]{background:var(--green);color:#fff;border-color:var(--green);}
+.btn[disabled]{opacity:.55;cursor:not-allowed;transform:none!important;box-shadow:none!important;}
+
+/* ---------- Modale d'action ---------- */
+.modal-backdrop{
+  position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;
+  background:rgba(15,23,42,.45);backdrop-filter:blur(3px);padding:20px;
+  animation:fade-in .18s ease-out;
+}
+.modal{
+  background:var(--paper-card);border-radius:var(--radius-lg);box-shadow:0 30px 70px rgba(2,6,23,.28);
+  width:min(620px,100%);max-height:86vh;display:flex;flex-direction:column;
+  border:1px solid var(--line-soft);animation:slide-up .22s cubic-bezier(.22,1,.36,1);
+}
+.modal-lg{width:min(880px,100%);}
+.modal-head{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+  padding:22px 26px 16px;border-bottom:1px solid var(--line-soft);
+}
+.modal-title{font-family:var(--font-heading);font-size:17px;font-weight:800;margin:0;letter-spacing:-.01em;}
+.modal-sub{font-size:13px;color:var(--text-dim);margin:4px 0 0;line-height:1.55;}
+.modal-close{
+  background:var(--line-soft);border:none;cursor:pointer;color:var(--text-dim);
+  width:30px;height:30px;border-radius:50%;font-size:17px;line-height:1;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;transition:all .2s;
+}
+.modal-close:hover{background:var(--line);color:var(--ink);}
+.modal-body{padding:20px 26px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+.modal-foot{
+  display:flex;justify-content:flex-end;gap:10px;padding:16px 26px 22px;
+  border-top:1px solid var(--line-soft);
+}
+
+/* ---------- Champs de formulaire ---------- */
+.field{display:flex;flex-direction:column;gap:6px;}
+.field-label{font-family:var(--font-heading);font-size:12.5px;font-weight:700;color:var(--ink-3);}
+.field-hint{font-size:11.5px;color:var(--text-faint);line-height:1.5;}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:560px){.field-row{grid-template-columns:1fr;}}
+.input,.select,.textarea{
+  font-family:var(--font-body);font-size:13.5px;color:var(--text);
+  background:var(--paper);border:1px solid var(--line);border-radius:10px;
+  padding:10px 12px;width:100%;transition:border-color .2s,box-shadow .2s;
+}
+.input:focus,.select:focus,.textarea:focus{
+  outline:none;border-color:var(--teal);box-shadow:0 0 0 3px rgba(2,132,199,.12);background:#fff;
+}
+.textarea{resize:vertical;min-height:88px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.6;}
+.checkbox-row{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text);cursor:pointer;}
+.checkbox-row input{width:16px;height:16px;accent-color:var(--teal);cursor:pointer;}
+
+/* ---------- Notifications ---------- */
+.toast-stack{position:fixed;right:22px;bottom:22px;z-index:200;display:flex;flex-direction:column;gap:10px;max-width:min(420px,calc(100vw - 44px));}
+.toast{
+  display:flex;align-items:flex-start;gap:11px;padding:13px 17px;border-radius:14px;
+  background:var(--ink);color:#fff;font-size:13px;line-height:1.5;
+  box-shadow:0 18px 40px rgba(2,6,23,.3);animation:slide-up .22s cubic-bezier(.22,1,.36,1);
+}
+.toast-ok{background:#14532D;}
+.toast-ko{background:#7F1D1D;}
+.toast-close{background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:15px;line-height:1;padding:0;margin-left:auto;}
+.toast-close:hover{color:#fff;}
+
+/* ---------- Panneau d'activité en direct ---------- */
+.live-panel{
+  position:fixed;top:76px;right:22px;z-index:115;width:min(430px,calc(100vw - 44px));
+  background:var(--paper-card);border:1px solid var(--line);border-radius:var(--radius-lg);
+  box-shadow:0 24px 60px rgba(2,6,23,.2);overflow:hidden;
+  animation:slide-up .22s cubic-bezier(.22,1,.36,1);
+}
+.live-head{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:15px 19px;border-bottom:1px solid var(--line-soft);background:var(--green-bg);
+}
+.live-title{font-family:var(--font-heading);font-size:13.5px;font-weight:800;color:#14532D;display:flex;align-items:center;gap:8px;}
+.live-list{max-height:min(430px,58vh);overflow-y:auto;}
+.live-item{display:flex;gap:11px;padding:12px 19px;border-bottom:1px solid var(--line-soft);font-size:12.5px;line-height:1.5;}
+.live-item:last-child{border-bottom:none;}
+.live-badge{
+  font-family:var(--font-heading);font-size:9.5px;font-weight:800;letter-spacing:.05em;
+  padding:3px 7px;border-radius:5px;height:fit-content;flex-shrink:0;text-transform:uppercase;margin-top:1px;
+}
+.live-badge-ok{background:var(--green-bg);color:#15803D;}
+.live-badge-ko{background:var(--red-bg);color:#B91C1C;}
+.live-text{color:var(--text);min-width:0;overflow-wrap:anywhere;}
+.live-meta{color:var(--text-faint);font-size:11px;margin-top:2px;}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:var(--green-bright);flex-shrink:0;}
+.pulse-dot[data-actif="true"]{animation:pulse 1.5s ease-in-out infinite;}
+
+/* ---------- Blocs de contenu des modales ---------- */
+.info-grid{display:grid;gap:11px;}
+.info-row{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--line-soft);font-size:13px;}
+.info-row:last-child{border-bottom:none;}
+.info-key{color:var(--text-dim);font-weight:600;}
+.info-val{color:var(--ink);font-weight:700;text-align:right;overflow-wrap:anywhere;}
+.note{padding:12px 15px;border-radius:12px;font-size:12.5px;line-height:1.6;}
+.note-info{background:var(--blue-bg);color:#075985;}
+.note-warn{background:var(--amber-bg);color:#92400E;}
+.code-block{
+  background:var(--ink);color:#E2E8F0;border-radius:12px;padding:15px 17px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;line-height:1.65;
+  overflow-x:auto;max-height:340px;white-space:pre-wrap;overflow-wrap:anywhere;
+}
+
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes slide-up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.82)}}
 
 /* ---------- Grilles & Cartes avec effet Spotlight interactif ---------- */
 .grid{display:grid;gap:24px;} /* More spacing */

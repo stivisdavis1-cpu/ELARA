@@ -65,7 +65,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: user.email,
             name: user.name || `${user.given_name} ${user.family_name}`,
             accessToken: tokens.access_token,
-            roles
+            roles,
+            // Tenant porté par le jeton : claim explicite s'il existe,
+            // sinon le claim de client Keycloak. Sert d'en-tête
+            // x-tenant-id pour l'API, qui vérifie l'appartenance.
+            tenantId: user.tenant_id || user.tenantId || user.organization || null,
           };
         } catch (e) {
           console.error("[AUTH] Exception during authorize:", e);
@@ -82,6 +86,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.accessToken = (user as any).accessToken
         token.roles = (user as any).roles || []
+        token.tenantId = (user as any).tenantId || null
       }
       return token
     },
@@ -90,6 +95,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.accessToken = token.accessToken
       // @ts-ignore
       session.user.roles = (token as any).roles || []
+      // @ts-ignore
+      session.tenantId = (token as any).tenantId || null
       return session
     },
   },
@@ -98,6 +105,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 declare module "next-auth" {
   interface Session {
     accessToken?: string;
+    /** Organisation courante, portée par le claim du jeton. */
+    tenantId?: string | null;
     user: {
       id?: string;
       email?: string;
@@ -108,5 +117,6 @@ declare module "next-auth" {
   interface User {
     accessToken?: string;
     roles?: string[];
+    tenantId?: string | null;
   }
 }

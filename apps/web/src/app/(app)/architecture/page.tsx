@@ -1,7 +1,10 @@
-﻿import React from "react";
+﻿import { Portee } from "@/components/page-actions";
+import { BoutonWebhookLive } from "@/components/webhook-live";
+import React from "react";
 
 export default function ArchitecturePage() {
   return (
+    <>
     <div dangerouslySetInnerHTML={{ __html: `<section class="view" id="v-architecture">
 <div class="topbar">
     <div><div class="eyebrow"><svg class="wave-rule" viewBox="0 0 46 14" fill="none"><path d="M0 7h4L6 2l4 10 3-9 2 6 3-6 3 6 2-6 3 9 4-10 2 5h4" stroke="url(#wg)" stroke-width="1.4" stroke-linecap="round" fill="none"></path><defs><linearGradient id="wg" x1="0" y1="0" x2="46" y2="0"><stop stop-color="#A9761F"></stop><stop offset="1" stop-color="#1A4A3C"></stop></linearGradient></defs></svg><span>Console admin · vue technique</span></div>
@@ -97,6 +100,10 @@ export default function ArchitecturePage() {
   </table>
 </div>
 </section>` }} />
+    <Portee selector=".topbar-actions">
+      <BoutonWebhookLive />
+    </Portee>
+  </>
   );
 }
 
