@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Patch, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, UploadedFiles, Req, Res, StreamableFile, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, UploadedFiles, 
+Req, Res, StreamableFile, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, resolve } from 'path';
@@ -344,18 +345,103 @@ export class ScannerController {
   }
 
   @Patch('documents/:id')
-  @ApiOperation({ summary: 'Mettre à jour les champs extraits d\'un document (admin requis)' })
+  @ApiOperation({ summary: 'Mettre à jour les champs extraits d\'un document (figé après archivage)' })
   @ApiBearerAuth()
   async updateDocumentFields(@Param('id') id: string, @Body() body: any, @Req() req: any) {
-    if (!requireAdmin(req)) {
-      throw new UnauthorizedException('Réservé aux administrateurs.');
-    }
     const tenantId = req.user?.tenantId || 'test-tenant';
     const extractedData = body?.extractedData ?? body ?? {};
     if (typeof extractedData !== 'object' || Array.isArray(extractedData)) {
       throw new BadRequestException('extractedData doit être un objet clé/valeur.');
     }
     return this.scannerService.updateExtraction(tenantId, id, extractedData);
+  }
+
+  // ==========================================================
+  // ÉLÉMENTS D'INFORMATION (édition avant archivage)
+  // ==========================================================
+
+  @Get('documents/:id/elements')
+  @ApiOperation({ summary: 'Éléments typés d\'un document (mot-clé, acteur, date, montant, texte)' })
+  @ApiBearerAuth()
+  async listerElements(@Param('id') id: string, @Req() req: any) {
+    return this.scannerService.listerElements(this.tenant(req), id);
+  }
+
+  @Post('documents/:id/elements')
+  @ApiOperation({ summary: 'Ajouter un élément au document' })
+  @ApiBearerAuth()
+  async ajouterElement(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    return this.scannerService.ajouterElement(this.tenant(req), id, {
+      nature: body?.nature,
+      label: body?.label,
+      valeur: body?.valeur,
+      page: body?.page ?? null,
+      zone: body?.zone,
+      confiance: body?.confiance ?? null,
+    });
+  }
+
+  @Patch('documents/:id/elements/:elementId')
+  @ApiOperation({ summary: 'Corriger un élément (nature, libellé, valeur)' })
+  @ApiBearerAuth()
+  async modifierElement(
+    @Param('id') id: string,
+    @Param('elementId') elementId: string,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
+    return this.scannerService.modifierElement(this.tenant(req), id, elementId, {
+      nature: body?.nature,
+      label: body?.label,
+      valeur: body?.valeur,
+      page: body?.page,
+      confiance: body?.confiance,
+      statut: body?.statut,
+    });
+  }
+
+  @Delete('documents/:id/elements/:elementId')
+  @ApiOperation({ summary: 'Supprimer un élément' })
+  @ApiBearerAuth()
+  async supprimerElement(
+    @Param('id') id: string,
+    @Param('elementId') elementId: string,
+    @Req() req: any,
+  ) {
+    return this.scannerService.supprimerElement(this.tenant(req), id, elementId);
+  }
+
+  @Post('documents/:id/elements/:elementId/ocr')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Relancer l\'OCR sur une seule zone du document et l\'attribuer à cet élément' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 12 * 1024 * 1024 } }))
+  @ApiBearerAuth()
+  async ocrElement(
+    @Param('id') id: string,
+    @Param('elementId') elementId: string,
+    @UploadedFile() file: any,
+    @Body() body: any,
+    @Req() req: any,
+  ) {
+    if (!file) throw new BadRequestException('Aucun fichier reçu : la zone à analyser est obligatoire.');
+    const texte = await this.scannerService.ocrService.extractText(file.buffer, file.mimetype || 'image/png');
+    let zone: unknown;
+    if (body?.zone) {
+      try {
+        zone = typeof body.zone === 'string' ? JSON.parse(body.zone) : body.zone;
+      } catch {
+        throw new BadRequestException('zone doit être un objet JSON {x, y, w, h}.');
+      }
+    }
+    return this.scannerService.ocrZoneVersElement(this.tenant(req), id, elementId, {
+      valeur: texte,
+      page: body?.page ? Number(body.page) : null,
+      zone,
+    });
+  }
+
+  private tenant(req: any): string {
+    return req.user?.tenantId || 'test-tenant';
   }
 
   @Get('documents/:id/export')

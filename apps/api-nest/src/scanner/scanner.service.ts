@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { MinioService } from './minio.service.js';
 import { PrismaService } from '../prisma.service.js';
 import { ScannerGateway } from './scanner.gateway.js';
@@ -7,6 +7,21 @@ import { CfoService } from '../cfo/cfo.service.js';
 import { OcrService } from './ocr.service.js';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service.js';
 import { SearchService } from './search.service.js';
+
+/**
+ * Comparaison de termes pour la validation : minuscules, sans accents ni
+ * ponctuation. Deux écritures d'un même terme (« Échéance » / « echeance »)
+ * ne doivent pas compter comme deux termes différents.
+ */
+function normaliserComparaison(texte: string): string {
+  return (texte ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9%]+/g, ' ')
+    .trim();
+}
+
 @Injectable()
 export class ScannerService {
   private readonly logger = new Logger(ScannerService.name);
@@ -101,7 +116,10 @@ export class ScannerService {
 
     this.logger.log(`Extraction OCR synchrone en cours pour le document ${docId}...`);
     let ocrText = '';
-    let analysis = {
+    let analysis: {
+      smartName: string; type: string; status: string; statusColor: string; statusBg: string;
+      extractedData: Record<string, unknown>; alert: unknown; mots_cles?: number; mots_cles_a_valider?: number;
+    } = {
       smartName: file.originalname,
       type: '',
       status: 'Analyse Terminée',
@@ -147,6 +165,18 @@ export class ScannerService {
       } catch (dbErr: any) {
         this.logger.warn(`Impossible de mettre à jour le document en BDD (probablement un doublon): ${dbErr.message}`);
       }
+
+      // Les éléments typés portent les mots-clés *avec leur valeur*, comme
+      // les dates, et seuls ceux que le texte du document confirme sont
+      // validés automatiquement. C'est ce qui permet à la fiche document
+      // d'afficher « mot-clé → valeur » au lieu d'une liste de termes nus.
+      const semis = await this.semerElements(docId, tenantId, aiData as Record<string, unknown>, ocrText)
+        .catch((e) => {
+          this.logger.warn(`Semis des éléments impossible pour ${docId}: ${e.message}`);
+          return { total: 0, valides: 0, aValider: 0 };
+        });
+      analysis.mots_cles = semis.valides;
+      analysis.mots_cles_a_valider = semis.aValider;
 
       // Publish shadow task to RabbitMQ for memory and background analysis
       this.logger.log(`Publication dans RabbitMQ (document_shadow_processing) pour l'analyse de fond de ${docId}...`);
@@ -455,13 +485,20 @@ export class ScannerService {
   }
 
   /**
-   * Mise à jour des champs extraits d'un document (réservée aux administrateurs).
-   * Réécrit `extraction_data` (JSONB) — la visionneuse rejoue ainsi la consultation.
+   * Mise à jour des champs extraits d'un document.
+   *
+   * Ouverte à tout utilisateur du tenant : la correction d'une valeur lue de
+   * travers est un acte métier normal, pas une opération d'administration.
+   * fermée une fois le document archivé : l'archive est la copie figée qui
+   * fait foi, la modifier après coup cassait la piste d'audit.
    */
   async updateExtraction(tenantId: string, documentId: string, extractedData: Record<string, unknown>) {
     const doc = await this.findDocumentWithArchive(documentId);
     if (!doc || doc.tenant_id !== tenantId) {
       throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    if (doc.archived_at || doc.archive_path) {
+      throw new ConflictException('Document archivé : son extraction est figée.');
     }
     try {
       await this.prisma.$executeRawUnsafe(
@@ -479,6 +516,350 @@ export class ScannerService {
       modified_fields: Object.keys(extractedData),
       extraction: extractedData,
     };
+  }
+
+  /**
+   * Éléments d'information d'un document, avec leur nature.
+   *
+   * `extraction_data` reste la map plate pour compatibilité avec les
+   * lecteurs existants, mais c'est `document_elements` qui fait autorité :
+   * seul lui dit si une valeur est un mot-clé, un montant ou une date, et
+   * d'où elle vient.
+   */
+  async listerElements(tenantId: string, documentId: string) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    const elements = (await this.prisma.$queryRawUnsafe(
+      `SELECT id, nature, label, valeur, page, zone, confiance, statut, source, created_at, updated_at
+         FROM document_elements
+        WHERE document_id = $1 AND tenant_id = $2
+        ORDER BY
+          CASE nature
+            WHEN 'mot_cle' THEN 0 WHEN 'acteur' THEN 1 WHEN 'date' THEN 2
+            WHEN 'montant' THEN 3 WHEN 'reference' THEN 4 WHEN 'texte' THEN 5
+            ELSE 6
+          END,
+          statut,
+          label`,
+      documentId,
+      tenantId,
+    )) as any[];
+    return {
+      document_id: documentId,
+      archive: doc.archive_path ?? null,
+      modifiable: !doc.archived_at && !doc.archive_path,
+      seuil_validation: Number(process.env.AUTO_VALIDATION_SEUIL ?? 0.8),
+      elements: elements.map((e: any) => ({
+        ...e,
+        page: e.page ?? null,
+        zone: e.zone ?? null,
+        confiance: e.confiance ?? null,
+      })),
+      // Rappel structuré pour l'interface : ce que l'IA a validé seule, et ce
+      // qui attend encore une relecture. Le frontend n'a plus à recomputer le
+      // seuil ni à deviner quels mots-clés sont fiables.
+      mots_cles_valides: elements
+        .filter((e: any) => e.nature === 'mot_cle' && e.statut === 'valide')
+        .map((e: any) => ({ id: e.id, terme: e.label, valeur: e.valeur, confiance: e.confiance })),
+      a_valider: elements
+        .filter((e: any) => e.statut !== 'valide')
+        .map((e: any) => ({ id: e.id, nature: e.nature, label: e.label, valeur: e.valeur, confiance: e.confiance })),
+    };
+  }
+
+  /**
+   * Ajout d'un élément. La nature est validée en liste blanche : c'est elle
+   * qui pilote le filtrage de la recherche, une nature libre la rendrait
+   * inexploitable.
+   */
+  async ajouterElement(tenantId: string, documentId: string, input: {
+    nature?: string; label: string; valeur: string; page?: number | null; zone?: unknown; confiance?: number | null;
+  }) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    if (doc.archived_at || doc.archive_path) {
+      throw new ConflictException('Document archivé : son extraction est figée.');
+    }
+    const label = (input.label ?? '').trim();
+    const valeur = (input.valeur ?? '').trim();
+    if (!label) throw new BadRequestException('Le libellé est obligatoire.');
+    if (!valeur) throw new BadRequestException('La valeur est obligatoire.');
+    const nature = this.natureElement(input.nature);
+
+    const ligne = (await this.prisma.$queryRawUnsafe(
+      `INSERT INTO document_elements (tenant_id, document_id, nature, label, valeur, page, zone, confiance, statut, source)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, 'valide', 'manuel')
+       ON CONFLICT (document_id, nature, label, valeur) DO UPDATE
+         SET valeur = EXCLUDED.valeur, source = 'manuel', statut = 'valide', updated_at = NOW()
+       RETURNING id, nature, label, valeur, page, zone, confiance, statut, source, created_at, updated_at`,
+      tenantId,
+      documentId,
+      nature,
+      label,
+      valeur,
+      input.page ?? null,
+      input.zone ? JSON.stringify(input.zone) : null,
+      input.confiance ?? null,
+    )) as any[];
+
+    // On garde aussi la map plate alignée, sinon la visionneuse et la
+    // recherche existantes continueraient d'ignorer la saisie.
+    await this.synchroniserExtractionPlate(documentId, tenantId);
+    return ligne[0];
+  }
+
+  async modifierElement(tenantId: string, documentId: string, elementId: string, patch: {
+    nature?: string; label?: string; valeur?: string; page?: number | null; confiance?: number | null; statut?: string;
+  }) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    if (doc.archived_at || doc.archive_path) {
+      throw new ConflictException('Document archivé : son extraction est figée.');
+    }
+    const courant = (await this.prisma.$queryRawUnsafe(
+      `SELECT nature, label, valeur, page, confiance, statut FROM document_elements WHERE id = $1 AND document_id = $2 AND tenant_id = $3`,
+      elementId, documentId, tenantId,
+    )) as any[];
+    if (!courant.length) throw new NotFoundException('Élément introuvable.');
+
+    const ligne = (await this.prisma.$queryRawUnsafe(
+      `UPDATE document_elements
+          SET nature = $1, label = $2, valeur = $3, page = $4, confiance = $5, statut = $6,
+              source = 'manuel', updated_at = NOW()
+        WHERE id = $7 AND document_id = $8 AND tenant_id = $9
+      RETURNING id, nature, label, valeur, page, zone, confiance, statut, source, created_at, updated_at`,
+      patch.nature !== undefined ? this.natureElement(patch.nature) : courant[0].nature,
+      patch.label !== undefined ? String(patch.label).trim() : courant[0].label,
+      patch.valeur !== undefined ? String(patch.valeur).trim() : courant[0].valeur,
+      patch.page !== undefined ? patch.page : courant[0].page,
+      patch.confiance !== undefined ? patch.confiance : courant[0].confiance,
+      // Reprendre un élément à la main le valide : c'est la relecture humaine
+      // qui prime, elle ne repasse pas par le seuil automatique.
+      patch.statut !== undefined
+        ? (patch.statut === 'valide' ? 'valide' : 'a_valider')
+        : patch.valeur !== undefined || patch.label !== undefined || patch.nature !== undefined
+          ? 'valide'
+          : courant[0].statut,
+      elementId, documentId, tenantId,
+    )) as any[];
+
+    await this.synchroniserExtractionPlate(documentId, tenantId);
+    return ligne[0];
+  }
+
+  async supprimerElement(tenantId: string, documentId: string, elementId: string) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    if (doc.archived_at || doc.archive_path) {
+      throw new ConflictException('Document archivé : son extraction est figée.');
+    }
+    await this.prisma.$executeRawUnsafe(
+      `DELETE FROM document_elements WHERE id = $1 AND document_id = $2 AND tenant_id = $3`,
+      elementId, documentId, tenantId,
+    );
+    await this.synchroniserExtractionPlate(documentId, tenantId);
+    return { supprime: true, id: elementId };
+  }
+
+  /**
+   * OCR d'une seule zone du document.
+   *
+   * On ne retraite pas le fichier entier : le client découpe la zone (page +
+   * rectangle) et n'envoie que le morceau, ce qui est la seule façon
+   * dERVER un document de 40 pages sans le repasser intégralement au moteur
+   * OCR. Le texte obtenu alimente un élément précis au lieu d'écraser
+   * l'extraction entière.
+   */
+  async ocrZoneVersElement(
+    tenantId: string,
+    documentId: string,
+    elementId: string,
+    zone: { label?: string; valeur?: string; page?: number | null; zone?: unknown },
+  ) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    if (doc.archived_at || doc.archive_path) {
+      throw new ConflictException('Document archivé : son extraction est figée.');
+    }
+    const courant = (await this.prisma.$queryRawUnsafe(
+      `SELECT id FROM document_elements WHERE id = $1 AND document_id = $2 AND tenant_id = $3`,
+      elementId, documentId, tenantId,
+    )) as any[];
+    if (!courant.length) throw new NotFoundException('Élément introuvable.');
+
+    const ligne = (await this.prisma.$queryRawUnsafe(
+      `UPDATE document_elements
+          SET valeur = $1, page = $2, zone = $3::jsonb, source = 'ocr', statut = 'valide', updated_at = NOW()
+        WHERE id = $4 AND document_id = $5 AND tenant_id = $6
+      RETURNING id, nature, label, valeur, page, zone, confiance, statut, source, created_at, updated_at`,
+      (zone.valeur ?? '').trim(),
+      zone.page ?? null,
+      zone.zone ? JSON.stringify(zone.zone) : null,
+      elementId, documentId, tenantId,
+    )) as any[];
+
+    await this.synchroniserExtractionPlate(documentId, tenantId);
+    return ligne[0];
+  }
+
+  private natureElement(nature: unknown): string {
+    const connues = ['mot_cle', 'acteur', 'date', 'montant', 'reference', 'texte', 'autre'];
+    const valeur = String(nature ?? '').trim().toLowerCase();
+    if (!connues.includes(valeur)) {
+      throw new BadRequestException(`Nature inconnue. Attendu : ${connues.join(', ')}.`);
+    }
+    return valeur;
+  }
+
+  /**
+   * Confidence d'un mot-clé, mesurée et non inventée.
+   *
+   * L'extraction ne renvoie pas de score par champ. Plutôt que d'en
+   * fabriquer un — ce qui reviendrait à valider au hasard, et à présenter
+   * comme fiable une valeur jamais vérifiée — on regarde si le terme est
+   * réellement présent dans le texte du document :
+   *
+   * - 1    le terme est dans le texte, et le chiffre cited avec ;
+   * - 0,6  le terme y est, sans valeur chiffrée à recouper ;
+   * - 0,3  le terme n'y est pas mais la valeur, si.
+   *
+   * Au-dessus du seuil (0,8 par défaut) l'élément est validé seul. En
+   * dessous il attend une relecture humaine, ce qui est le comportement
+   * attendu d'une extraction automatique.
+   */
+  private confianceMotCle(terme: string, valeur: string, texteOcr: string): number {
+    const texte = normaliserComparaison(texteOcr);
+    if (!texte) return 0;
+    const present = (v: string) => normaliserComparaison(v).length > 2 && texte.includes(normaliserComparaison(v));
+    const termePresent = present(terme);
+    const chiffres = (valeur.match(/\d[\d\s.,]{2,}/g) ?? []).map((c) => c.trim()).filter(Boolean);
+    const chiffresVerifies = chiffres.length > 0 && chiffres.every((c) => present(c));
+    if (termePresent && (!chiffres.length || chiffresVerifies)) return 1;
+    if (termePresent) return 0.6;
+    if (chiffresVerifies) return 0.3;
+    return 0;
+  }
+
+  /**
+   * Transforme l'extraction brute en éléments typés.
+   *
+   * Les mots-clés arrivent désormais avec leur valeur, sur le même modèle que
+   * les dates : un terme seul ne dit pas ce qu'il désigne dans ce document.
+   * On accepte les deux formes (liste d'objets `{terme, valeur}` issue du
+   * nouveau prompt, chaîne « a, b, c » de l'ancienne sortie aplatie) pour ne
+   * sans casser les extractions déjà en base.
+   */
+  private async semerElements(
+    documentId: string,
+    tenantId: string,
+    extraction: Record<string, unknown>,
+    texteOcr: string,
+  ): Promise<{ total: number; valides: number; aValider: number }> {
+    const seuil = Number(process.env.AUTO_VALIDATION_SEUIL ?? 0.8);
+    const paires: { nature: string; label: string; valeur: string }[] = [];
+
+    const detailles = Array.isArray(extraction['mots_cles_indexation'])
+      ? (extraction['mots_cles_indexation'] as any[])
+      : Array.isArray(extraction['Mots-clés détaillés'])
+        ? (extraction['Mots-clés détaillés'] as any[])
+        : null;
+
+    if (detailles) {
+      for (const m of detailles) {
+        if (m && typeof m === 'object') {
+          const terme = String(m.terme ?? m.mot_cle ?? '').trim();
+          const valeur = String(m.valeur ?? m.signification ?? m.contexte ?? '').trim();
+          if (terme) paires.push({ nature: 'mot_cle', label: terme, valeur });
+        } else if (typeof m === 'string' && m.trim()) {
+          paires.push({ nature: 'mot_cle', label: m.trim(), valeur: '' });
+        }
+      }
+    } else {
+      const plats = String(extraction['Mots-clés'] ?? '')
+        .split(/[,;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const plat of plats) {
+        // Ancienne forme aplatie : « terme (valeur) » si elle existe.
+        const m = /^(.+?)\s*\((.+)\)$/.exec(plat);
+        paires.push(
+          m
+            ? { nature: 'mot_cle', label: m[1].trim(), valeur: m[2].trim() }
+            : { nature: 'mot_cle', label: plat, valeur: '' },
+        );
+      }
+    }
+
+    for (const acteur of (Array.isArray(extraction['acteurs_impliques']) ? (extraction['acteurs_impliques'] as any[]) : [])) {
+      const nom = String(acteur?.nom ?? '').trim();
+      if (nom) paires.push({ nature: 'acteur', label: String(acteur?.role ?? 'Acteur').trim(), valeur: nom });
+    }
+    for (const d of (Array.isArray(extraction['dates_cles']) ? (extraction['dates_cles'] as any[]) : [])) {
+      const date = String(d?.date ?? '').trim();
+      if (date) paires.push({ nature: 'date', label: String(d?.signification ?? 'Date').trim(), valeur: date });
+    }
+    for (const champ of ['Type de Document', 'Domaine Métier', 'Statut', 'Résumé'] as const) {
+      const v = String(extraction[champ] ?? '').trim();
+      if (v) paires.push({ nature: 'texte', label: champ, valeur: v });
+    }
+
+    let valides = 0;
+    let aValider = 0;
+    for (const p of paires) {
+      const confiance = p.nature === 'mot_cle' ? this.confianceMotCle(p.label, p.valeur, texteOcr) : null;
+      const statut = confiance !== null && confiance >= seuil ? 'valide' : 'a_valider';
+      if (statut === 'valide') valides += 1;
+      else aValider += 1;
+      await this.prisma.$executeRawUnsafe(
+        `INSERT INTO document_elements (tenant_id, document_id, nature, label, valeur, confiance, statut, source)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'ia')
+         ON CONFLICT (document_id, nature, label, valeur) DO NOTHING`,
+        tenantId, documentId, p.nature, p.label, p.valeur || '—', confiance, statut,
+      );
+    }
+    this.logger.log(
+      `Éléments semés pour ${documentId} : ${valides} validé(s) automatiquement, ${aValider} à vérifier.`,
+    );
+    return { total: valides + aValider, valides, aValider };
+  }
+
+  /**
+   * Reconstruit `extraction_data` depuis les éléments typés.
+   *
+   * Les mots-clés sont multivalués, la map plate ne peut donc pas les
+   * welcomes porter : ils sont regroupés sous une entrée unique, les autres
+   * natures gardent une entrée par libellé.
+   */
+  private async synchroniserExtractionPlate(documentId: string, tenantId: string) {
+    const elements = (await this.prisma.$queryRawUnsafe(
+      `SELECT nature, label, valeur FROM document_elements WHERE document_id = $1 AND tenant_id = $2`,
+      documentId, tenantId,
+    )) as any[];
+    const plat: Record<string, string> = {};
+    const motsCles: string[] = [];
+    for (const e of elements) {
+      if (e.nature === 'mot_cle') {
+        if (!motsCles.includes(e.valeur)) motsCles.push(e.valeur);
+      } else {
+        plat[e.label] = e.valeur;
+      }
+    }
+    if (motsCles.length) plat['Mots-clés'] = motsCles.join(', ');
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE documents SET extraction_data = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+      JSON.stringify(plat),
+      documentId,
+    );
   }
 
   /**

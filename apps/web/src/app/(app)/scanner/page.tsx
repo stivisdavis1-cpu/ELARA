@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import ScannerUploader from "../../../components/ScannerUploader";
 import DocumentViewer from "../../../components/DocumentViewer";
+import DocumentElements from "../../../components/DocumentElements";
 import { FileText, X, AlertTriangle, Menu, Crop, Landmark, Building2, ShieldCheck, ScrollText, CalendarDays, Tags, Scale } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
@@ -701,6 +702,9 @@ export default function ScannerPage() {
                   </pre>
                 </div>
               )}
+
+              {/* Éléments typés : mots-clés avec leur valeur, validés automatiquement */}
+              {activeDoc?.id ? <DocumentElements documentId={activeDoc.id} /> : null}
 
               {/* Fiche signalétique — Rendu structuré des données extraites */}
               {activeDoc?.extractedData && (() => {

@@ -157,6 +157,12 @@ def flatten_response(data: dict) -> dict:
     dates = ", ".join(
         [f"{d.get('date', '')} ({d.get('signification', '')})" for d in data.get("dates_cles", [])]
     )
+    # Les mots-clés sont alignés sur les dates : un terme seul ne dit rien de
+    # ce qu'il désigne dans CE document. « TVA » peut désigner un taux, un
+    # poste de déclaration ou une obligation ; la valeur porte ce sens, donc
+    # l'interface peut afficher « mot-clé → valeur » comme elle affiche
+    # « date → signification ».
+    mots_cles = ", ".join(_paire_mot_cle(m) for m in data.get("mots_cles_indexation", []))
     return {
         "Domaine Métier": data.get("domaine_metier", "AUTRE"),
         "Type de Document": data.get("type_document", "Non défini"),
@@ -164,10 +170,34 @@ def flatten_response(data: dict) -> dict:
         "Justification Statut": data.get("justification_statut", ""),
         "Acteurs": acteurs if acteurs else "Aucun détecté",
         "Dates Clés": dates if dates else "Aucune détectée",
-        "Mots-clés": ", ".join(data.get("mots_cles_indexation", [])),
+        "Mots-clés": mots_cles if mots_cles else "Aucun détecté",
+        "Mots-clés détaillés": [
+            {"terme": t, "valeur": v}
+            for t, v in (_paire_mot_cle(m) for m in data.get("mots_cles_indexation", []))
+        ],
         "Résumé": data.get("resume_document", ""),
         "type": data.get("type_document", "AUTRE"),
     }
+
+
+def _paire_mot_cle(entree) -> tuple:
+    """Normalise un mot-clé en (terme, valeur).
+
+    Le modèle peut renvoyer l'ancienne forme (une simple chaîne) ou la
+    nouvelle (un objet terme/valeur) : les deux sont acceptées pour ne pas
+    casser les réponses en cache ni les déploiements pas encore mis à jour.
+    """
+    if isinstance(entree, dict):
+        terme = str(entree.get("terme") or entree.get("mot_cle") or "").strip()
+        valeur = str(
+            entree.get("valeur")
+            or entree.get("signification")
+            or entree.get("contexte")
+            or ""
+        ).strip()
+        return terme, valeur
+    terme = str(entree).strip()
+    return terme, ""
 
 
 @router.post("/extract")
@@ -198,7 +228,9 @@ Structure JSON obligatoire :
   "dates_cles": [
     {{ "date": "YYYY-MM-DD", "signification": "émission, réunion, échéance, jalon..." }}
   ],
-  "mots_cles_indexation": ["terme_metier_1", "terme_metier_2", "..."],
+  "mots_cles_indexation": [
+    {{ "terme": "terme_metier_1", "valeur": "ce que ce terme désigne PRÉCISÉMENT dans ce document" }}
+  ],
   "resume_document": "2 phrases : contenu + objet métier + action attendue"
 }}
 
@@ -211,6 +243,10 @@ Règles d'expert métier :
    mots vides (le, la, des, pour, document...). Chaque type a ses mots-clés caractéristiques :
    une facture → TVA, HT, TTC, NIU, échéance, paiement ; un contrat → parties, durée, résiliation,
    clause ; un document projet/GED → cadrage, périmètre, livrables, jalons, référentiel, outils, processus.
+   La VALEUR est obligatoire et doit dire ce que le terme désigne dans CE document, avec le chiffre
+   ou l'élément concerné quand il existe : "TVA" → "19,25 % sur les prestations", "échéance" →
+   "30/04/2026", "DSI" → "responsable du cadrage, contact technique". Un terme sans valeur ne sert
+   à rien à l'indexation : mieux vaut un mot-clé en moins qu'une valeur inventée.
 4. STATUT : déduis-le du contenu — document de travail, en projet, non signé → BROUILLON ;
    mention « à valider » → A_VALIDER ; signature/validation présente → SIGNE ou VALIDE ;
    échéance dépassée → EXPIRE ; litige/penalité mentionné → LITIGE ; paiement en attente → EN_ATTENTE.

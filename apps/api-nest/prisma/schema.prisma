@@ -57,6 +57,7 @@ model Tenant {
   fournisseurs       Fournisseur[]
   factures           Facture[]
   documents          Document[]
+  document_elements  DocumentElement[]
   produits           Produit[]
   commandes          Commande[]
   paiements          Paiement[]
@@ -306,9 +307,46 @@ model Document {
   commandes         Commande[]
   chunks            DocumentChunk[]
   documents_generes DocumentGenere[]
+  elements          DocumentElement[]
 
   @@unique([tenant_id, hash_document])
   @@map("documents")
+}
+
+/// Un élément d'information extrait d'un document, avec sa nature.
+/// L'extraction plate (`extraction_data`) ne disait pas ce qu'était une valeur :
+/// un mot-clé d'indexation se retrouvait indiscernable d'un montant. Chaque
+/// élément est donc typé, et porte sa provenance pour qu'on puisse distinguer
+/// ce que l'IA a proposé de ce qu'un humain a corrigé.
+model DocumentElement {
+  id          String   @id @default(uuid())
+  tenant_id   String
+  document_id String
+
+  /// mot_cle | acteur | date | montant | reference | texte | autre
+  nature      String   @default("autre")
+  label       String
+  valeur      String
+  /// Page et rectangle (0-1) de la zone OCR d'origine, si l'élément vient d'une zone
+  page        Int?
+  zone        Json?
+  /// Score de confiance de l'extraction automatique, 0 à 1
+  confiance   Float?
+  /// valide | a_valider — la validation automatique ne vaut que si la
+  /// confiance dépasse le seuil de l'entreprise ; en dessous, l'élément part
+  /// en revue humaine. Une correction manuelle force le statut.
+  statut      String   @default("a_valider")
+  /// ocr | ia | manuel
+  source      String   @default("ia")
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, document_id])
+  @@map("document_elements")
 }
 
 model DocumentChunk {
