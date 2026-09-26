@@ -8,10 +8,6 @@ export default function AgentsPage() {
     <h1 class="page-title">Agents &amp; Extensions</h1>
     <p class="page-sub">Directeur Financier Virtuel est le premier agent connecté à votre Mémoire d’entreprise. Chaque agent suivant — interne, partenaire ou tiers — rejoint la même plateforme, sans jamais dupliquer vos données.</p></div>
     <div class="topbar-actions">
-      <button class="btn-live-stream" onclick="triggerSimulatedSupabaseEvent()" title="Simuler l'injection d'un flux Supabase">
-        <span class="pulse-dot"></span> Webhook Live
-      </button>
-      <button class="btn btn-ghost">Voir un exemple de manifeste</button><button class="btn btn-primary teal">Proposer un agent</button>
     </div>
   </div>
 

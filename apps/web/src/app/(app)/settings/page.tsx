@@ -1,96 +1,207 @@
-import React from "react";
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
+import { getUsageData } from "@/lib/ged-api";
+import type { DocLigne, EntiteRef, FactureLigne } from "@/lib/ged-api";
+
+const PLANS = [
+  {
+    nom: "Freemium",
+    prix: "0 F",
+    features: ["Business Scanner limité", "Rapport mensuel ponctuel", "Assistant restreint"],
+  },
+  {
+    nom: "Starter",
+    prix: "9 900 F/mois",
+    actuel: true,
+    features: ["Business Scanner illimité", "Mémoire Entreprise", "CFO de base"],
+  },
+  {
+    nom: "Pro",
+    prix: "24 900 F/mois",
+    features: ["Commercial", "Import WhatsApp", "Automatisations limitées"],
+  },
+  {
+    nom: "Business",
+    prix: "54 900 F/mois",
+    features: ["Opérations & agents avancés", "Intégrations API", "Multi-utilisateurs"],
+  },
+];
+
+const MODULES = [
+  { nom: "Business Scanner", statut: "Actif" },
+  { nom: "CFO", statut: "Actif" },
+  { nom: "Commercial", statut: "Non exposé par l'API" },
+  { nom: "Opérations", statut: "Non exposé par l'API" },
+];
+
+const INTEGRATIONS = [
+  { nom: "WhatsApp Business", statut: null },
+  { nom: "Orange Money / MTN MoMo", statut: null },
+  { nom: "Logiciel de comptabilité", statut: null },
+  { nom: "API Elara", statut: null },
+];
+
+function octets(o: number | null | undefined): string {
+  const n = Number(o ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return "0 o";
+  if (n < 1024) return `${n} o`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
+  return `${(n / (1024 * 1024)).toFixed(1)} Mo`;
+}
 
 export default function SettingsPage() {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [docs, setDocs] = useState<DocLigne[]>([]);
+  const [clients, setClients] = useState<EntiteRef[]>([]);
+  const [factures, setFactures] = useState<FactureLigne[]>([]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const d = await getUsageData();
+    setDocs(d.docs);
+    setClients(d.clients);
+    setFactures(d.factures);
+    setError(d.error);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void Promise.resolve().then(() => load());
+  }, [load]);
+
+  const stockage = docs.reduce((acc, d) => acc + Number(d.archive?.taille ?? 0), 0);
+
+  const compteurs = [
+    { label: "Documents consolidés", valeur: loading ? "…" : String(docs.length), quota: "Quota non exposé" },
+    { label: "Contacts clients", valeur: loading ? "…" : String(clients.length), quota: "Quota non exposé" },
+    { label: "Factures en base", valeur: loading ? "…" : String(factures.length), quota: "Quota non exposé" },
+    { label: "Stockage archivé", valeur: loading ? "…" : octets(stockage), quota: "Quota non exposé" },
+  ];
+
   return (
-    <div dangerouslySetInnerHTML={{ __html: `<section class="view" id="v-settings">
-<div class="topbar">
-    <div><div class="eyebrow"><svg class="wave-rule" viewBox="0 0 46 14" fill="none"><path d="M0 7h4L6 2l4 10 3-9 2 6 3-6 3 6 2-6 3 9 4-10 2 5h4" stroke="url(#wg)" stroke-width="1.4" stroke-linecap="round" fill="none"></path><defs><linearGradient id="wg" x1="0" y1="0" x2="46" y2="0"><stop stop-color="#A9761F"></stop><stop offset="1" stop-color="#1A4A3C"></stop></linearGradient></defs></svg><span>Configuration</span></div>
-    <h1 class="page-title">Paramètres &amp; abonnement</h1>
-    <p class="page-sub">Configuration de l’espace OrbitTech Services.</p></div>
-    <div class="topbar-actions">
-      <button class="btn-live-stream" onclick="triggerSimulatedSupabaseEvent()" title="Simuler l'injection d'un flux Supabase">
-        <span class="pulse-dot"></span> Webhook Live
-      </button>
-      <button class="btn btn-ghost">Clés API</button><button class="btn btn-primary teal">Ajouter une intégration</button>
-    </div>
-  </div>
+    <motion.section
+      className="view"
+      id="v-settings"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="topbar">
+        <div>
+          <div className="eyebrow">
+            <svg className="wave-rule" viewBox="0 0 46 14" fill="none">
+              <path d="M0 7h4L6 2l4 10 3-9 2 6 3-6 3 6 2-6 3 9 4-10 2 5h4" stroke="url(#wg)" strokeWidth="1.4" strokeLinecap="round" fill="none"></path>
+              <defs>
+                <linearGradient id="wg" x1="0" y1="0" x2="46" y2="0">
+                  <stop stopColor="#A9761F"></stop>
+                  <stop offset="1" stopColor="#1A4A3C"></stop>
+                </linearGradient>
+              </defs>
+            </svg>
+            <span>Configuration</span>
+          </div>
+          <h1 className="page-title">Paramètres &amp; abonnement</h1>
+          <p className="page-sub">Configuration de l&apos;espace et paliers tarifaires.</p>
+        </div>
+        <div className="topbar-actions">
+          <button
+            className="btn btn-primary teal transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98]"
+            style={{ cursor: "pointer" }}
+            onClick={() => { setLoading(true); setError(null); void load(); }}
+            disabled={loading}
+          >
+            {loading ? "Chargement..." : "Actualiser"}
+          </button>
+        </div>
+      </div>
 
-<div class="card" style="margin-bottom:20px;">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">
-    <div><div class="section-title">Utilisation du plan Starter</div><div class="section-sub">Cycle en cours · renouvellement le 30 septembre 2026</div></div>
-    <span class="pill pill-success">Actif</span>
-  </div>
-  <div class="grid g4">
-    <div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:var(--text-dim);">Utilisateurs</span><strong class="mono">2/3</strong></div>
-    <div class="progress"><div style="width:67%;background:#1A4A3C"></div></div>
-  </div>
-    <div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:var(--text-dim);">Documents</span><strong class="mono">340/500</strong></div>
-    <div class="progress"><div style="width:68%;background:#A9761F"></div></div>
-  </div>
-    <div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:var(--text-dim);">Questions posées</span><strong class="mono">812/1000</strong></div>
-    <div class="progress"><div style="width:81%;background:#1A4A3C"></div></div>
-  </div>
-    <div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:var(--text-dim);">Stockage</span><strong class="mono">1,3/2 Go</strong></div>
-    <div class="progress"><div style="width:65%;background:#C06A2C"></div></div>
-  </div>
-  </div>
-</div>
+      <div className="preview-banner" style={{ background: "var(--amber-bg, rgba(217,119,6,0.08))", borderColor: "rgba(217,119,6,0.3)" }}>
+        <span className="dot" style={{ background: "var(--amber)" }}></span>
+        <div>
+          <strong>Abonnement non géré par l&apos;API</strong><br />
+          <span className="muted">
+            Les compteurs ci-dessous sont calculés depuis vos données réelles. Les quotas du plan,
+            l&apos;état des modules et les intégrations ne sont pas encore exposés.
+          </span>
+        </div>
+      </div>
 
-<div class="section-title" style="margin-bottom:14px;">Comparer les paliers</div>
-<div class="grid g4" style="margin-bottom:24px;">
-  
-    <div class="card" style="">
-      
-      <div style="font-family:var(--font-heading);font-weight:700;font-size:17px;">Freemium</div>
-      <div style="font-size:20px;font-weight:700;margin:6px 0 14px;font-family:var(--font-heading);">0 F</div>
-      <div style="font-size:12px;color:var(--text-dim);line-height:2;margin-bottom:16px;">✓ Business Scanner limité<br>✓ Rapport mensuel ponctuel<br>✓ Assistant restreint</div>
-      <button class="btn btn-primary teal" style="width:100%;justify-content:center;">Changer de plan</button>
-    </div>
-    <div class="card" style="border:1.6px solid var(--indigo);">
-      <span class="pill pill-info" style="margin-bottom:10px;">Plan actuel</span>
-      <div style="font-family:var(--font-heading);font-weight:700;font-size:17px;">Starter</div>
-      <div style="font-size:20px;font-weight:700;margin:6px 0 14px;font-family:var(--font-heading);">9 900 F/mois</div>
-      <div style="font-size:12px;color:var(--text-dim);line-height:2;margin-bottom:16px;">✓ Business Scanner illimité<br>✓ Mémoire Entreprise<br>✓ CFO de base</div>
-      <button class="btn btn-ghost" style="width:100%;justify-content:center;" disabled="">Plan actif</button>
-    </div>
-    <div class="card" style="">
-      
-      <div style="font-family:var(--font-heading);font-weight:700;font-size:17px;">Pro</div>
-      <div style="font-size:20px;font-weight:700;margin:6px 0 14px;font-family:var(--font-heading);">24 900 F/mois</div>
-      <div style="font-size:12px;color:var(--text-dim);line-height:2;margin-bottom:16px;">✓ Commercial<br>✓ Import WhatsApp<br>✓ Automatisations limitées</div>
-      <button class="btn btn-primary teal" style="width:100%;justify-content:center;">Changer de plan</button>
-    </div>
-    <div class="card" style="">
-      
-      <div style="font-family:var(--font-heading);font-weight:700;font-size:17px;">Business</div>
-      <div style="font-size:20px;font-weight:700;margin:6px 0 14px;font-family:var(--font-heading);">54 900 F/mois</div>
-      <div style="font-size:12px;color:var(--text-dim);line-height:2;margin-bottom:16px;">✓ Opérations &amp; agents avancés<br>✓ Intégrations API<br>✓ Multi-utilisateurs</div>
-      <button class="btn btn-primary teal" style="width:100%;justify-content:center;">Changer de plan</button>
-    </div>
-</div>
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: "10px", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "var(--red)", fontSize: "13px", marginBottom: "16px" }}>
+          Impossible de charger toutes les données — {error}
+        </div>
+      )}
 
-<div class="grid g2">
-  <div class="card">
-    <div class="section-title">Modules activés</div>
-    
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">Business Scanner</span><span class="pill pill-success">Actif</span></div>
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">CFO</span><span class="pill pill-success">Actif</span></div>
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">Commercial — Plan Pro</span><span class="pill pill-neutral">Verrouillé</span></div>
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">Opérations — Plan Business</span><span class="pill pill-neutral">Verrouillé</span></div>
-  </div>
-  <div class="card">
-    <div class="section-title">Intégrations</div>
-    
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">WhatsApp Business</span><span class="pill pill-success">Connecté</span></div>
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">Orange Money / MTN MoMo</span><span class="pill pill-success">Connecté</span></div>
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">Logiciel de comptabilité</span><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Connecter</button></div>
-      <div class="list-row"><span style="font-size:13px;font-weight:700;font-family:var(--font-heading);">API Elara</span><button class="btn btn-ghost" style="padding:5px 12px;font-size:11.5px;">Connecter</button></div>
-  </div>
-</div>
-</section>` }} />
+      <div className="card" style={{ marginBottom: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
+          <div>
+            <div className="section-title">Volumétrie de l&apos;espace</div>
+            <div className="section-sub">Calculé à l&apos;instantané sur les données consolidées</div>
+          </div>
+          <span className="pill pill-neutral">Plan non détecté</span>
+        </div>
+        <div className="grid g4">
+          {compteurs.map((c) => (
+            <div key={c.label}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "5px" }}>
+                <span style={{ color: "var(--text-dim)" }}>{c.label}</span>
+                <strong className="mono">{c.valeur}</strong>
+              </div>
+              <div style={{ fontSize: "11px", color: "var(--text-faint)" }}>{c.quota}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="section-title" style={{ marginBottom: "14px" }}>Comparer les paliers</div>
+      <div className="grid g4" style={{ marginBottom: "24px" }}>
+        {PLANS.map((p) => (
+          <div key={p.nom} className="card" style={p.actuel ? { border: "1.6px solid var(--indigo)" } : undefined}>
+            {p.actuel && (
+              <span className="pill pill-info" style={{ marginBottom: "10px" }}>Plan de référence</span>
+            )}
+            <div style={{ fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "17px" }}>{p.nom}</div>
+            <div style={{ fontSize: "20px", fontWeight: 700, margin: "6px 0 14px", fontFamily: "var(--font-heading)" }}>{p.prix}</div>
+            <div style={{ fontSize: "12px", color: "var(--text-dim)", lineHeight: 2, marginBottom: "16px" }}>
+              {p.features.map((f) => <div key={f}>✓ {f}</div>)}
+            </div>
+            <button
+              className={p.actuel ? "btn btn-ghost" : "btn btn-primary teal"}
+              style={{ width: "100%", justifyContent: "center" }}
+              disabled
+            >
+              {p.actuel ? "Non vérifiable" : "Changement non branché"}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid g2">
+        <div className="card">
+          <div className="section-title">Modules activés</div>
+          <div className="section-sub">L&apos;API ne renvoie pas encore la liste des modules du tenant</div>
+          {MODULES.map((m) => (
+            <div key={m.nom} className="list-row">
+              <span style={{ fontSize: "13px", fontWeight: 700, fontFamily: "var(--font-heading)" }}>{m.nom}</span>
+              <span className={`pill ${m.statut === "Actif" ? "pill-success" : "pill-neutral"}`}>{m.statut}</span>
+            </div>
+          ))}
+        </div>
+        <div className="card">
+          <div className="section-title">Intégrations</div>
+          <div className="section-sub">Aucun état de connexion exposé par l&apos;API</div>
+          {INTEGRATIONS.map((i) => (
+            <div key={i.nom} className="list-row">
+              <span style={{ fontSize: "13px", fontWeight: 700, fontFamily: "var(--font-heading)" }}>{i.nom}</span>
+              <span className="pill pill-neutral">Non vérifiable</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.section>
   );
 }

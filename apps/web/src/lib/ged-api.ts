@@ -202,6 +202,41 @@ async function gedRequest<T>(endpoint: string, init: RequestInit = {}): Promise<
   return body.data as T;
 }
 
+export interface HealthStatus {
+  status: string;
+  services: Record<string, string>;
+}
+
+export interface CurrentUser {
+  id: string | null;
+  name: string | null;
+  email: string | null;
+  roles: string[];
+}
+
+/**
+ * Session NextAuth réelle de l'utilisateur courant. Sert aux pages
+ * « Utilisateurs & rôles » et « Sécurité » pour n'afficher que des
+ * identités effectives plutôt que des profils d'exemple.
+ */
+export async function getCurrentUser(): Promise<CurrentUser> {
+  const session = await auth();
+  return {
+    id: session?.user?.id ?? null,
+    name: session?.user?.name ?? null,
+    email: session?.user?.email ?? null,
+    roles: session?.user?.roles ?? [],
+  };
+}
+
+// ============================================================
+// SANTÉ PLATEFORME
+// ============================================================
+
+export async function getHealth() {
+  return gedRequest<HealthStatus>("/v1/health");
+}
+
 // ============================================================
 // CFO
 // ============================================================
@@ -359,6 +394,38 @@ export async function getCommercialData() {
   };
 }
 
+export async function getClientsData() {
+  const [clients, fournisseurs, factures, paiements, balance] = await Promise.allSettled([
+    getClients(),
+    getFournisseurs(),
+    getFactures(),
+    getPaiements(),
+    getBalanceAgee(),
+  ]);
+  return {
+    clients: val(clients) ?? [],
+    fournisseurs: val(fournisseurs) ?? [],
+    factures: val(factures) ?? [],
+    paiements: val(paiements) ?? [],
+    balance: val(balance),
+    error: firstError([clients, fournisseurs, factures, paiements, balance]),
+  };
+}
+
+export async function getDocgenData() {
+  const [docs, factures, clients] = await Promise.allSettled([
+    getDocuments(),
+    getFactures(),
+    getClients(),
+  ]);
+  return {
+    docs: val(docs) ?? [],
+    factures: val(factures) ?? [],
+    clients: val(clients) ?? [],
+    error: firstError([docs, factures, clients]),
+  };
+}
+
 export async function getOpsData() {
   const [produits, stocks, fournisseurs, factures, depenses] = await Promise.allSettled([
     getProduits(),
@@ -404,5 +471,63 @@ export async function getReportData() {
     anomalies: val(an) ?? [],
     paiements: val(pa) ?? [],
     error: firstError([s, rw, bfrR, bal, tv, f, cl, fo, d, an, pa]),
+  };
+}
+
+export async function getAdminData() {
+  const [health, docs, clients] = await Promise.allSettled([
+    getHealth(),
+    getDocuments(),
+    getClients(),
+  ]);
+  return {
+    health: val(health),
+    docs: val(docs) ?? [],
+    clients: val(clients) ?? [],
+    error: firstError([health, docs, clients]),
+  };
+}
+
+export async function getUsageData() {
+  const [docs, clients, factures] = await Promise.allSettled([
+    getDocuments(),
+    getClients(),
+    getFactures(),
+  ]);
+  return {
+    docs: val(docs) ?? [],
+    clients: val(clients) ?? [],
+    factures: val(factures) ?? [],
+    error: firstError([docs, clients, factures]),
+  };
+}
+
+export async function getWorkflowsData() {
+  const [balance, depenses, paiements] = await Promise.allSettled([
+    getBalanceAgee(),
+    getDepenses(),
+    getPaiements(),
+  ]);
+  return {
+    balance: val(balance),
+    depenses: val(depenses) ?? [],
+    paiements: val(paiements) ?? [],
+    error: firstError([balance, depenses, paiements]),
+  };
+}
+
+export async function getMobileData() {
+  const [synthese, balance, paiements, factures] = await Promise.allSettled([
+    getSyntheseTresorerie(),
+    getBalanceAgee(),
+    getPaiements(),
+    getFactures(),
+  ]);
+  return {
+    synthese: val(synthese),
+    balance: val(balance),
+    paiements: val(paiements) ?? [],
+    factures: val(factures) ?? [],
+    error: firstError([synthese, balance, paiements, factures]),
   };
 }

@@ -8,10 +8,6 @@ export default function RoadmapPage() {
     <h1 class="page-title">Feuille de route</h1>
     <p class="page-sub">Une roadmap modulaire disciplinée — chaque version ajoute une couche fonctionnelle sans reconstruire le socle.</p></div>
     <div class="topbar-actions">
-      <button class="btn-live-stream" onclick="triggerSimulatedSupabaseEvent()" title="Simuler l'injection d'un flux Supabase">
-        <span class="pulse-dot"></span> Webhook Live
-      </button>
-      
     </div>
   </div>
 
@@ -56,7 +52,7 @@ export default function RoadmapPage() {
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
     <span class="pill pill-neutral" style="padding:7px 14px;">Assistant RH</span><span class="pill pill-neutral" style="padding:7px 14px;">Assistant Juridique</span><span class="pill pill-neutral" style="padding:7px 14px;">Assistant Achats</span>
   </div>
-  <div style="margin-top:14px;"><a href="#agents" onclick="event.preventDefault();setActive('agents');" style="font-size:12.5px;font-weight:700;color:var(--ink-3);font-family:var(--font-heading);">Voir le détail dans Agents &amp; Extensions →</a></div>
+  <div style="margin-top:14px;"><a href="/agents" style="font-size:12.5px;font-weight:700;color:var(--ink-3);font-family:var(--font-heading);">Voir le détail dans Agents &amp; Extensions →</a></div>
   <div class="divider"></div>
   <div class="section-title" style="font-size:14px;">Trajectoire de montée en charge</div>
   <p style="font-size:13px;color:var(--text-dim);line-height:1.8;margin:10px 0 0;max-width:640px;">

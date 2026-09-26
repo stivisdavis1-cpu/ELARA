@@ -8,10 +8,6 @@ export default function BrandPage() {
     <h1 class="page-title">Système de marque</h1>
     <p class="page-sub">Le repère graphique commun à toutes les surfaces Elara : marque, couleur, typographie.</p></div>
     <div class="topbar-actions">
-      <button class="btn-live-stream" onclick="triggerSimulatedSupabaseEvent()" title="Simuler l'injection d'un flux Supabase">
-        <span class="pulse-dot"></span> Webhook Live
-      </button>
-      
     </div>
   </div>
 

@@ -8,10 +8,6 @@ export default function ArchitecturePage() {
     <h1 class="page-title">Architecture technique</h1>
     <p class="page-sub">Les 6 couches du système, l’isolation multi-tenant et la plateforme Avancé commune — « start simple, design for scale ».</p></div>
     <div class="topbar-actions">
-      <button class="btn-live-stream" onclick="triggerSimulatedSupabaseEvent()" title="Simuler l'injection d'un flux Supabase">
-        <span class="pulse-dot"></span> Webhook Live
-      </button>
-      
     </div>
   </div>
 
