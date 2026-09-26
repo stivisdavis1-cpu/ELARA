@@ -274,15 +274,21 @@ export class ScannerController {
     }
 
     try {
-      const results = await this.searchService.hybridSearch(tenantId, q);
+      const resultat = await this.searchService.rechercher(tenantId, q, { limit: 10 });
       return {
-        message: 'Résultats de la recherche sémantique',
-        results
+        message: `Recherche ${resultat.mode} — ${resultat.passages.length} passage(s)`,
+        query: resultat.query,
+        requete_reformulee: resultat.requete_reformulee,
+        mode: resultat.mode,
+        suffisant: resultat.suffisant,
+        avertissements: resultat.avertissements,
+        results: resultat.passages,
       };
     } catch (error: any) {
       return {
-        error: 'Erreur lors de la recherche sémantique',
-        details: error.message
+        error: 'Erreur lors de la recherche',
+        details: error.message,
+        results: [],
       };
     }
   }

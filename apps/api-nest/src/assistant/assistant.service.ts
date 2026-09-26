@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { CfoService } from '../cfo/cfo.service.js';
 import { PrismaService } from '../prisma.service.js';
+import { SearchService, ResultatRecherche } from '../scanner/search.service.js';
 
 @Injectable()
 export class AssistantService {
@@ -9,7 +10,8 @@ export class AssistantService {
 
   constructor(
     private readonly cfoService: CfoService,
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    private readonly searchService: SearchService,
   ) {}
 
   async askAdvice(tenantId: string, question: string) {
@@ -55,15 +57,50 @@ export class AssistantService {
       this.logger.warn(`Impossible de récupérer le contexte financier pour ${tenantId}`, e);
     }
 
-    // 2. Récupération de la mémoire de l'entreprise (RAG basique)
-    let companyMemory: string[] = [];
+    // 2. Récupération de la mémoire de l'entreprise (RAG)
+    //
+    // Avant : les 10 derniers enregistrements, sans pertinence ni citation.
+    // L'IA recevait donc un contexte arbitraire, et pouvait répondre « je n'ai
+    // pas trouvé » alors que la pièce existait, ou l'inverse.
+    // Maintenant : recherche hybride (plein texte + vectorielle) sur les
+    // documents réels, avec abstention explicite si la matière est insuffisante.
+    let recherche: ResultatRecherche = {
+      query: question,
+      requete_reformulee: '',
+      mode: 'lexical',
+      passages: [],
+      suffisant: false,
+      avertissements: [],
+    };
+    try {
+      recherche = await this.searchService.rechercher(tenantId, question, { limit: 6 });
+      this.logger.log(
+        `Recherche « ${question} » : ${recherche.passages.length} passage(s), mode ${recherche.mode}, suffisant=${recherche.suffisant}`,
+      );
+    } catch (e) {
+      this.logger.warn(`Recherche documentaire indisponible : ${(e as Error).message}`);
+    }
+
+    // Extrait la mémoire d'entreprise uniquement si elle est pertinente, pour
+    // ne plus noyer la requête sous du bruit.
+    const companyMemory: string[] = [];
     try {
       const memories = await this.prisma.companyMemory.findMany({
         where: { tenant_id: tenantId },
         orderBy: { created_at: 'desc' },
-        take: 10
+        take: 20,
       });
-      companyMemory = memories.map(m => m.content);
+      // reformuler() a déjà retiré les mots outils : ce qui reste est
+      // significatif, y compris les sigles courts (TVA, BFR, IS) qui portent
+      // l'essentiel du vocabulaire PME.
+      const termes = recherche.requete_reformulee.split(' ').filter(Boolean);
+      for (const memoire of memories) {
+        const contenu = memoire.content.toLowerCase();
+        if (termes.some((t) => contenu.includes(t))) {
+          companyMemory.push(memoire.content);
+        }
+        if (companyMemory.length >= 5) break;
+      }
     } catch (e) {
       this.logger.warn(`Impossible de récupérer la mémoire pour ${tenantId}`, e);
     }
@@ -78,8 +115,24 @@ export class AssistantService {
           question: question,
           tenant_id: tenantId,
           financial_data: contextData,
-          company_memory: companyMemory
-        })
+          company_memory: companyMemory,
+          // Sources citables : le prompt impose de s'y référer.
+          sources: recherche.passages.map((p) => ({
+            document_id: p.document_id,
+            nom: p.nom,
+            type: p.type_document,
+            page: p.page,
+            extrait: p.extrait,
+          })),
+          // materialsuffisantes:false oblige le modèle à s'abstenir plutôt
+          // que de compléter avec des connaissances génériques.
+          materia_suffisante: recherche.suffisant,
+          consignes: [
+            "Réponds uniquement à partir des sources fournies et des données financières.",
+            "Cite chaque affirmation en indicating le document et la page.",
+            "Si les sources ne permettent pas de répondre, dis-le explicitement.",
+          ],
+        }),
       });
 
       if (!response.ok) {
@@ -89,12 +142,22 @@ export class AssistantService {
       const aiAdvice = await response.json();
 
       // Marquage fiable : la mémoire d'entreprise est utilisée si du contexte RAG a été injecté
-      const memoireUtilisee =
-        Array.isArray(companyMemory) && companyMemory.length > 0;
-      const finalAdvice =
-        typeof aiAdvice === 'object' && aiAdvice !== null
-          ? { ...aiAdvice, memoire_entreprise_utilisee: memoireUtilisee }
-          : aiAdvice;
+      const memoireUtilisee = companyMemory.length > 0;
+      const finalAdvice = {
+        ...(typeof aiAdvice === 'object' && aiAdvice !== null ? aiAdvice : { diagnostic: aiAdvice }),
+        memoire_entreprise_utilisee: memoireUtilisee,
+        sources: recherche.passages.map((p) => ({
+          document_id: p.document_id,
+          nom: p.nom,
+          type: p.type_document,
+          page: p.page,
+          extrait: p.extrait,
+          score: p.score,
+        })),
+        mode_recherche: recherche.mode,
+        reponse_fondee: recherche.suffisant,
+        ...(recherche.avertissements.length ? { avertissements: recherche.avertissements } : {}),
+      };
 
       // Sauvegarder la réponse de l'IA
       await this.prisma.message.create({
@@ -114,9 +177,39 @@ export class AssistantService {
         actions_recommandees: [],
         alerte_tresorerie: false,
         incertitudes: ["Connexion au cerveau IA perdue."],
-        verification_web_effectuee: false
+        verification_web_effectuee: false,
+        sources: recherche.passages,
+        mode_recherche: recherche.mode,
+        reponse_fondee: false,
       };
     }
+  }
+
+  /**
+   * Enregistre le retour utilisateur sur une réponse. Sans ce signal, aucune
+   * amélioration du RAG n'est mesurable.
+   */
+  async enregistrerFeedback(tenantId: string, input: {
+    message_id?: string;
+    question?: string;
+    note: number;
+    commentaire?: string;
+    reponse?: unknown;
+  }) {
+    if (input.note !== 1 && input.note !== -1) {
+      return { enregistre: false, motif: 'note doit valoir 1 ou -1' };
+    }
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO assistant_feedback (tenant_id, message_id, question, note, commentaire, reponse)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      tenantId,
+      input.message_id ?? null,
+      input.question ?? null,
+      input.note,
+      input.commentaire ?? null,
+      JSON.stringify(input.reponse ?? null),
+    );
+    return { enregistre: true };
   }
 
   async getConversationHistory(tenantId: string) {

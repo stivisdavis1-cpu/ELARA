@@ -362,16 +362,22 @@ export class ScannerService {
       if (!resume && !typeDoc) return;
 
       const embedding = await this.searchService.generateEmbedding(contenu);
-      const vectorLiteral = `[${embedding.join(',')}]`;
+      // Sans embedding, la mémoire est indexée sans vecteur : la recherche
+      // plein texte la trouvera, la sémantique non. Mieux vaut un index
+      // partiel qu'un vecteur de bruit.
       await this.prisma.$executeRawUnsafe(
         `INSERT INTO company_memories (id, tenant_id, content, type_info, embedding, created_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4::vector, NOW())`,
         tenantId,
         contenu,
         'document',
-        vectorLiteral,
+        embedding ? `[${embedding.join(',')}]` : null,
       );
-      this.logger.log(`Mémoire d'entreprise enrichie (document ${doc.id}).`);
+      this.logger.log(
+        embedding
+          ? `Mémoire d'entreprise enrichie (document ${doc.id}).`
+          : `Mémoire d'entreprise indexée sans vecteur (embeddings indisponibles).`,
+      );
     } catch (e: any) {
       this.logger.warn(`Impossible d'enrichir la mémoire d'entreprise (RAG): ${e.message}`);
     }
