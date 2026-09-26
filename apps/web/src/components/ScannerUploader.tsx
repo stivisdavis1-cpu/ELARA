@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Scan, Loader2, CheckCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
+import { socketScanner } from "@/lib/api-url";
 
 interface ScannerUploaderProps {
   onScanComplete?: (documents: any[]) => void;
@@ -19,15 +20,14 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<Socket | null>(null);
+  const tenantId = (session?.user as any)?.tenantId || '';
 
   useEffect(() => {
     if (session?.user) {
       // Connexion au WebSocket avec le tenantId de l'utilisateur
-      const tenantId = (session.user as any).tenantId || 'test-tenant';
-      const socket = io('http://localhost:3001/v1/scanner/realtime', {
-        query: { tenantId }
-      });
-      
+      const socket = io(socketScanner(), {
+        query: { tenantId: tenantId || 'test-tenant' }
+      });      
       socket.on('document_status_update', (data) => {
         setUploadedDocs((prevDocs) => {
           return prevDocs.map(doc => {
@@ -107,24 +107,35 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
       formData.append('file', file);
 
       try {
-        const response = await fetch('http://localhost:3001/v1/scanner/documents', {
+        // On passe par le rewrite Next (`/api/scanner/*` → API Nest) plutôt
+        // que par `http://localhost:3001` codé en dur : depuis le navigateur,
+        // localhost désigne le poste du client, pas le conteneur API, et
+        // l'envoi échouait dès que le web tournait en docker.
+        const reponse = await fetch('/api/scanner/documents', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${(session as any)?.accessToken}`
+            Authorization: `Bearer ${(session as any)?.accessToken ?? ''}`,
+            ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
           },
           body: formData
         });
 
-        if (response.ok) {
-          const resultWrapper = await response.json();
+        if (reponse.ok) {
+          const resultWrapper = await reponse.json();
           const result = resultWrapper.data || resultWrapper;
+          if (!result.documentId) {
+            // Sans identifiant serveur, la ligne locale deviendrait un doublon
+            // permanent au prochain rechargement : mieux vaut le signaler que
+            // d'inventer un identifiant qui ne correspond à rien en base.
+            throw new Error("Le serveur n'a pas retourné d'identifiant de document.");
+          }
           // On ajoute le document avec les données réelles et l'URL Blob du fichier original pour l'affichage local
           newDocs.push({
-            id: result.documentId || Math.random().toString(36).substr(2, 9),
+            id: result.documentId,
             name: result.name || file.name,
             time: 'À l\'instant',
-            type: result.type || 'Document',
-            supplier: result.extractedData?.['Fournisseur probable'] || 'Inconnu',
+            type: result.type || undefined,
+            supplier: result.extractedData?.['Fournisseur probable'] || result.extractedData?.['Entité (Emetteur/Tiers)'] || '',
             status: result.status || 'Terminé',
             statusColor: result.statusColor || 'var(--teal)',
             statusBg: result.statusBg || 'rgba(20, 184, 166, 0.1)',
@@ -137,11 +148,11 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
         } else {
           // Gérer le cas d'erreur côté serveur
           newDocs.push({
-            id: Math.random().toString(36).substr(2, 9),
+            id: `erreur_${Date.now()}_${file.name}`,
             name: file.name,
             time: 'À l\'instant',
-            type: 'Erreur',
-            supplier: 'Inconnu',
+            type: undefined,
+            supplier: '',
             status: 'Échec de l\'analyse',
             statusColor: 'var(--red)',
             statusBg: 'rgba(162, 59, 59, 0.1)',
@@ -153,19 +164,20 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
           });
         }
       } catch (err) {
+        const message = err instanceof Error ? err.message : "Envoi impossible.";
         console.error("Erreur lors de l'envoi OCR", err);
         newDocs.push({
-          id: Math.random().toString(36).substr(2, 9),
+          id: `erreur_${Date.now()}_${file.name}`,
           name: file.name,
           time: 'À l\'instant',
-          type: 'Erreur',
-          supplier: 'Inconnu',
+          type: undefined,
+          supplier: '',
           status: 'Échec de l\'analyse',
           statusColor: 'var(--red)',
           statusBg: 'rgba(162, 59, 59, 0.1)',
-          extractedData: { 'Erreur': 'Impossible de se connecter au serveur OCR.' },
+          extractedData: { 'Erreur': message },
           alert: true,
-          ocrText: 'Erreur lors de la lecture du document.',
+          ocrText: '',
           localFileUrl: URL.createObjectURL(file),
           mimeType: file.type
         });

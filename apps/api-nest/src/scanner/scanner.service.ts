@@ -31,7 +31,10 @@ export class ScannerService {
 
     const fs = await import('fs');
     const fileBuffer = file.buffer || fs.readFileSync(file.path);
-    const docId = 'doc_' + Date.now();
+    // Date.now() seul suffit pas : deux envois dans la même milliseconde
+    // (import en masse, deux onglets) se disputaient la même clé primaire et le
+    // second insert échouait.
+    const docId = `doc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     // MinioService gère lui-même le repli local si MinIO est indisponible
     const uploadResult = await this.minioService.uploadFile(tenantId, { ...file, buffer: fileBuffer });
@@ -61,7 +64,10 @@ export class ScannerService {
           id: docId,
           tenant_id: tenantId,
           lien_minio: url,
-          type_document: 'Inconnu',
+          // Type laissé vide tant que la classification n'a pas abouti : on
+          // n'écrit jamais « Inconnu » en base, ce qui se retrouvait ensuite
+          // dans le nom du document et le rendait intitulé « Inconnu ».
+          type_document: null,
           score_confiance: 0,
           niveau_risque: 0,
           statut_validation: 'en_cours',
@@ -97,7 +103,7 @@ export class ScannerService {
     let ocrText = '';
     let analysis = {
       smartName: file.originalname,
-      type: 'Document Inconnu',
+      type: '',
       status: 'Analyse Terminée',
       statusColor: 'var(--blue)',
       statusBg: 'var(--blue-light)',
@@ -119,7 +125,9 @@ export class ScannerService {
       
       analysis = {
           smartName: file.originalname,
-          type: aiData.type || 'Inconnu',
+          // Le type renvoyé par le LLM n'est pas fiable : on le recoupe
+          // avec le texte avant de le persister.
+          type: this.classerDocument(ocrText, aiData.type),
           status: 'Analyse Terminée',
           statusColor: 'var(--blue)',
           statusBg: 'var(--blue-light)',
@@ -591,9 +599,13 @@ export class ScannerService {
     return rows.map((row: any) => ({
       document_id: row.id,
       tenant_id: row.tenant_id,
-      nom: row.type_document || this.displayNameOf(row.lien_minio),
+      // Le nom vient du fichier, le type est une information séparée. Les
+      // confondre faisait porter « Inconnu » ou « Facture » comme intitulé de
+      // document, et deux fichiers différents se retrouvaient avec le même nom.
+      nom: this.displayNameOf(row.lien_minio),
       fichier: this.displayNameOf(row.lien_minio),
-      type: row.type_document,
+      type: row.type_document || null,
+      type_libelle: row.type_document || 'Non classifié',
       statut: this.statusLabelOf(row.statut_validation),
       score: row.score_confiance != null ? Number(row.score_confiance) : null,
       niveau_risque: row.niveau_risque ?? 0,
@@ -612,6 +624,38 @@ export class ScannerService {
     }));
   }
 
+  /**
+   * Type documentaire retenu pour l'affichage et la recherche.
+   *
+   * On ne renvoie jamais « Inconnu » : un placeholder écrit en base remontait
+   * jusqu'au nom du document et leliste entière s'affichait « Inconnu ». Le
+   * type du LLM n'est retenu que s'il est plausible, sinon on classe sur les
+   * mots du document, et en dernier recours on assume un type neutre qui dit
+   * exactement ce qu'on sait.
+   */
+  private classerDocument(texte: string, typeLlm?: string | null): string {
+    const MOTIFS: [RegExp, string][] = [
+      [/\b(facture|invoice|facture de|reçu|avoir)\b/i, 'Facture'],
+      [/\b(devis|proforma|pro-forma|offre de prix)\b/i, 'Devis'],
+      [/\b(releve|relevé|rib|iban|extrait de compte|relevé bancaire)\b/i, 'Document bancaire'],
+      [/\b(contrat|convention|accord|prestataire|mandat)\b/i, 'Contrat'],
+      [/\b(bon de commande|bon de livraison|bl\b|cmr)\b/i, 'Bon de commande'],
+      [/\b(releve de_note de charges|bulletin de salaire|payslip)\b/i, 'Paie'],
+      [/\b(attestation|certificat|convention collective)\b/i, 'Attestation'],
+      [/\b(bilan|compte de resultat|compte de résultat|annexe)\b/i, 'Document comptable'],
+      [/\b(kbis|rccm|nif|niu|registre du commerce)\b/i, 'Document juridique'],
+      [/\b(identite|identité|passeport|cni|carte d')\b/i, "Pièce d'identité"],
+    ];
+    for (const [motif, type] of MOTIFS) {
+      if (motif.test(texte)) return type;
+    }
+    const candidat = (typeLlm ?? '').trim();
+    if (candidat && !/^(inconnu|document inconnu|document|erreur|autre|unknown)$/i.test(candidat)) {
+      return candidat.charAt(0).toUpperCase() + candidat.slice(1);
+    }
+    return 'Document non classifié';
+  }
+
   private statusLabelOf(status: string | null): string {
     const labels: Record<string, string> = {
       en_cours: 'En traitement',
@@ -624,7 +668,9 @@ export class ScannerService {
       archive: 'Archivé & Intégré',
       rejete: 'Rejeté',
     };
-    return labels[status || ''] || status || 'Inconnu';
+    // Un statut NULL veut dire « jamais traité », pas « inconnu » : l'ancien
+    // repli affichait « Inconnu » sur les documents en cours d'analyse.
+    return labels[status || ''] || status || 'Non traité';
   }
 
   private displayNameOf(lienMinio: string): string {

@@ -7,6 +7,7 @@ import { FileText, X, AlertTriangle, Menu, Crop, Landmark, Building2, ShieldChec
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
 import { fetchFileBytes } from "../../../lib/fileFetch";
+import { socketScanner } from "@/lib/api-url";
 
 interface ScannedDocument {
   id: string;
@@ -128,6 +129,7 @@ export default function ScannerPage() {
   // + archives GED) apparaissent, restaurées depuis le backend au chargement.
   const [documents, setDocuments] = useState<ScannedDocument[]>([]);
   const documentsRef = useRef<ScannedDocument[]>([]);
+  const enCoursRef = useRef(false);
   useEffect(() => { documentsRef.current = documents; }, [documents]);
   const [refreshKey, setRefreshKey] = useState(0);
   useEffect(() => {
@@ -140,7 +142,7 @@ export default function ScannerPage() {
   useEffect(() => {
     if (session?.user) {
       const tenantId = (session.user as { tenantId?: string }).tenantId || 'test-tenant';
-      const socket = io('http://localhost:3001/v1/scanner/realtime', {
+      const socket = io(socketScanner(), {
         query: { tenantId }
       });
       
@@ -193,15 +195,20 @@ export default function ScannerPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      // Deux 'focus' rapprochés déclenchent deux rechargements concurrents.
+      // Les deux lisaient le même `documentsRef` périmé et concaténaient
+      // chacun leur liste : chaque document apparaissait deux fois. On
+      // sérialise et on fusionne dans le set d'état, qui est la seule source
+      // de vérité.
+      if (enCoursRef.current) return;
+      enCoursRef.current = true;
       try {
         const res = await fetch('/api/scanner/documents');
         if (!res.ok) return;
         const payload = await res.json();
         const items = Array.isArray(payload?.data) ? payload.data : [];
         if (cancelled || items.length === 0) return;
-        const restored: ScannedDocument[] = items
-          .filter((it: any) => !new Set(documentsRef.current.map(d => d.id)).has(it.document_id))
-          .map((it: any) => ({
+        const restored: ScannedDocument[] = items.map((it: any) => ({
               id: it.document_id,
               name: it.nom,
               status: it.statut,
@@ -209,7 +216,7 @@ export default function ScannerPage() {
               statusBg: it.archive
                 ? 'rgba(20, 184, 166, 0.14)'
                 : (it.niveau_risque >= 7 ? 'rgba(220,38,38,0.12)' : 'rgba(20,184,166,0.1)'),
-              type: it.type || undefined,
+              type: it.type_libelle || it.type || undefined,
               alert: (it.niveau_risque ?? 0) >= 7,
               mimeType: mimeFromName(it.fichier || it.nom) as any,
               localFileUrl: `/api/scanner/file/${encodeURIComponent(it.document_id)}?as=base64`,
@@ -230,11 +237,22 @@ export default function ScannerPage() {
               ocrText: it.ocr_text || undefined,
               archive: it.archive || null,
             }));
-        setDocuments(prev => [...restored, ...prev]);
+        setDocuments(prev => {
+          const parId = new Map(prev.map(d => [d.id, d]));
+          // Le serveur fait foi : un document déjà connu est mis à jour (archivé
+          // dans un autre onglet, statut changé) au lieu d'être dupliqué.
+          for (const doc of restored) {
+            const existant = parId.get(doc.id);
+            parId.set(doc.id, existant ? { ...doc, ...existant, archive: doc.archive ?? existant.archive } : doc);
+          }
+          return [...parId.values()];
+        });
       } catch (e) {
         console.error('Réhydratation des documents impossible', e);
+      } finally {
+        enCoursRef.current = false;
       }
-})();
+    })();
     return () => { cancelled = true; };
   }, [refreshKey]);
 
