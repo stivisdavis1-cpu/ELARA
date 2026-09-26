@@ -23,11 +23,29 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: any) {
     // Cette méthode est appelée si la signature du token est valide.
     // L'objet renvoyé sera attaché à 'req.user' par Passport.
+    //
+    // Le tenant n'est volontairement PAS résolu ici : un même utilisateur
+    // peut être rattaché à plusieurs organisations via `user_tenants`, seul
+    // TenantInterceptor sait dire laquelle est demandée (et il vérifie
+    // l'accès). Les contrôleurs lisent donc `@TenantId()`, pas `req.user.tenantId`.
     return {
       userId: payload.sub,
       username: payload.preferred_username,
-      roles: payload.realm_access?.roles || [],
-      email: payload.email
+      roles: this.normaliserRoles(payload),
+      email: payload.email,
     };
+  }
+
+  /**
+   * Aplatit les rôles Keycloak en une liste de chaînes : `realm_access.roles`
+   * porte les rôles globaux, `resource_access` les rôles applicatifs.
+   */
+  private normaliserRoles(payload: any): string[] {
+    const realm = payload?.realm_access?.roles;
+    const ressources = Object.values<any>(payload?.resource_access ?? {})
+      .flatMap((r: any) => (Array.isArray(r?.roles) ? r.roles : []));
+    return [...new Set([...(Array.isArray(realm) ? realm : []), ...ressources])].filter(
+      (r): r is string => typeof r === 'string',
+    );
   }
 }

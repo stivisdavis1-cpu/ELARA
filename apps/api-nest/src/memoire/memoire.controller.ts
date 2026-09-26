@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Patch, Param, Body, UseGuards, UseInterceptors, Req } from '@nestjs/common';
+import { Body, Controller, Get, Post, Patch, Param, UseGuards, UseInterceptors } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { TenantInterceptor } from '../tenant/tenant.interceptor.js';
 import { AuditInterceptor } from '../audit/audit.interceptor.js';
+import { TenantId } from '../tenant/tenant-id.decorator.js';
 import { BusinessMemoryService } from './memoire.service.js';
 
 @ApiTags('Mémoire Entreprise')
@@ -18,20 +19,20 @@ export class MemoireController {
   // ==========================================
   @Get('clients')
   @ApiOperation({ summary: 'Lister les clients' })
-  listClients(@Req() req: any) {
-    return this.memoireService.listClients(req.user.tenantId);
+  listClients(@TenantId() tenantId: string) {
+    return this.memoireService.listClients(tenantId);
   }
 
   @Post('clients')
   @ApiOperation({ summary: 'Créer un client' })
-  createClient(@Req() req: any, @Body() data: any) {
-    return this.memoireService.createClient(req.user.tenantId, data);
+  createClient(@TenantId() tenantId: string, @Body() data: any) {
+    return this.memoireService.createClient(tenantId, data);
   }
 
   @Patch('clients/:id')
   @ApiOperation({ summary: 'Mettre à jour un client' })
-  updateClient(@Req() req: any, @Param('id') id: string, @Body() data: any) {
-    return this.memoireService.updateClient(req.user.tenantId, id, data);
+  updateClient(@TenantId() tenantId: string, @Param('id') id: string, @Body() data: any) {
+    return this.memoireService.updateClient(tenantId, id, data);
   }
 
   // ==========================================
@@ -39,20 +40,20 @@ export class MemoireController {
   // ==========================================
   @Get('fournisseurs')
   @ApiOperation({ summary: 'Lister les fournisseurs' })
-  listFournisseurs(@Req() req: any) {
-    return this.memoireService.listFournisseurs(req.user.tenantId);
+  listFournisseurs(@TenantId() tenantId: string) {
+    return this.memoireService.listFournisseurs(tenantId);
   }
 
   @Post('fournisseurs')
   @ApiOperation({ summary: 'Créer un fournisseur' })
-  createFournisseur(@Req() req: any, @Body() data: any) {
-    return this.memoireService.createFournisseur(req.user.tenantId, data);
+  createFournisseur(@TenantId() tenantId: string, @Body() data: any) {
+    return this.memoireService.createFournisseur(tenantId, data);
   }
 
   @Patch('fournisseurs/:id')
   @ApiOperation({ summary: 'Mettre à jour un fournisseur' })
-  updateFournisseur(@Req() req: any, @Param('id') id: string, @Body() data: any) {
-    return this.memoireService.updateFournisseur(req.user.tenantId, id, data);
+  updateFournisseur(@TenantId() tenantId: string, @Param('id') id: string, @Body() data: any) {
+    return this.memoireService.updateFournisseur(tenantId, id, data);
   }
 
   // ==========================================
@@ -60,14 +61,14 @@ export class MemoireController {
   // ==========================================
   @Get('produits')
   @ApiOperation({ summary: 'Lister les produits' })
-  listProduits(@Req() req: any) {
-    return this.memoireService.listProduits(req.user.tenantId);
+  listProduits(@TenantId() tenantId: string) {
+    return this.memoireService.listProduits(tenantId);
   }
 
   @Post('produits')
   @ApiOperation({ summary: 'Créer un produit' })
-  createProduit(@Req() req: any, @Body() data: any) {
-    return this.memoireService.createProduit(req.user.tenantId, data);
+  createProduit(@TenantId() tenantId: string, @Body() data: any) {
+    return this.memoireService.createProduit(tenantId, data);
   }
 
   // ==========================================
@@ -75,14 +76,14 @@ export class MemoireController {
   // ==========================================
   @Get('commandes')
   @ApiOperation({ summary: 'Lister les commandes' })
-  listCommandes(@Req() req: any) {
-    return this.memoireService.listCommandes(req.user.tenantId);
+  listCommandes(@TenantId() tenantId: string) {
+    return this.memoireService.listCommandes(tenantId);
   }
 
   @Post('commandes')
   @ApiOperation({ summary: 'Créer une commande' })
-  createCommande(@Req() req: any, @Body() data: any) {
-    return this.memoireService.createCommande(req.user.tenantId, data);
+  createCommande(@TenantId() tenantId: string, @Body() data: any) {
+    return this.memoireService.createCommande(tenantId, data);
   }
 
   // ==========================================
@@ -90,14 +91,14 @@ export class MemoireController {
   // ==========================================
   @Get('factures')
   @ApiOperation({ summary: 'Lister les factures' })
-  listFactures(@Req() req: any) {
-    return this.memoireService.listFactures(req.user.tenantId);
+  listFactures(@TenantId() tenantId: string) {
+    return this.memoireService.listFactures(tenantId);
   }
 
   @Post('factures')
   @ApiOperation({ summary: 'Créer une facture' })
-  createFacture(@Req() req: any, @Body() data: any) {
-    return this.memoireService.createFacture(req.user.tenantId, data);
+  createFacture(@TenantId() tenantId: string, @Body() data: any) {
+    return this.memoireService.createFacture(tenantId, data);
   }
 
   // ==========================================
@@ -105,14 +106,14 @@ export class MemoireController {
   // ==========================================
   @Get('paiements')
   @ApiOperation({ summary: 'Lister les paiements' })
-  listPaiements(@Req() req: any) {
-    return this.memoireService.listPaiements(req.user.tenantId);
+  listPaiements(@TenantId() tenantId: string) {
+    return this.memoireService.listPaiements(tenantId);
   }
 
   @Post('paiements')
   @ApiOperation({ summary: 'Enregistrer un paiement' })
-  createPaiement(@Req() req: any, @Body() data: any) {
-    return this.memoireService.createPaiement(req.user.tenantId, data);
+  createPaiement(@TenantId() tenantId: string, @Body() data: any) {
+    return this.memoireService.createPaiement(tenantId, data);
   }
 
   // ==========================================
@@ -120,14 +121,14 @@ export class MemoireController {
   // ==========================================
   @Get('depenses')
   @ApiOperation({ summary: 'Lister les dépenses' })
-  listDepenses(@Req() req: any) {
-    return this.memoireService.listDepenses(req.user.tenantId);
+  listDepenses(@TenantId() tenantId: string) {
+    return this.memoireService.listDepenses(tenantId);
   }
 
   @Post('depenses')
   @ApiOperation({ summary: 'Créer une dépense' })
-  createDepense(@Req() req: any, @Body() data: any) {
-    return this.memoireService.createDepense(req.user.tenantId, data);
+  createDepense(@TenantId() tenantId: string, @Body() data: any) {
+    return this.memoireService.createDepense(tenantId, data);
   }
 
   // ==========================================
@@ -135,7 +136,7 @@ export class MemoireController {
   // ==========================================
   @Get('stocks')
   @ApiOperation({ summary: 'Lister les stocks' })
-  listStocks(@Req() req: any) {
-    return this.memoireService.listStocks(req.user.tenantId);
+  listStocks(@TenantId() tenantId: string) {
+    return this.memoireService.listStocks(tenantId);
   }
 }
