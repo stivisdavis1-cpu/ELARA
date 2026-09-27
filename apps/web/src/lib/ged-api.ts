@@ -947,12 +947,6 @@ export interface CompteUtilisateur {
   identite?: { fournisseur: string; etat: string; sujet?: string; raison?: string; code?: number };
 }
 
-export const ROLES_UTILISATEUR = [
-  { cle: "admin_compte", libelle: "Administrateur", description: "Accès complet, y compris la facturation." },
-  { cle: "utilisateur_standard", libelle: "Utilisateur", description: "Équipier, pas de gestion des comptes." },
-  { cle: "assistant_ia_systeme", libelle: "Assistant IA", description: "Lecture seule, aucune écriture." },
-  { cle: "integration_externe", libelle: "Intégration", description: "Compte machine pour les connecteurs." },
-] as const;
 
 export async function getUtilisateurs() {
   return gedRequest<CompteUtilisateur[]>("/v1/utilisateurs");

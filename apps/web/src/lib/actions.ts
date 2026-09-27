@@ -50,6 +50,7 @@ import {
   supprimerWorkflow,
   EntreeAudit,
 } from "./ged-api";
+import { ROLES_UTILISATEUR } from "./roles";
 
 // ============================================================
 // COERCITION DES SAISIES
@@ -612,12 +613,7 @@ export async function lireRolesAction(): Promise<
 > {
   const comptes = await getUtilisateurs().catch(() => [] as { role: string }[]);
   const utilises = new Set(comptes.map((c) => c.role));
-  const roles = [
-    { cle: "admin_compte", libelle: "Administrateur", description: "Accès complet, y compris la facturation et la gestion des comptes." },
-    { cle: "utilisateur_standard", libelle: "Utilisateur", description: "Accès aux modules métier, sans gestion des comptes ni des quotas." },
-    { cle: "assistant_ia_systeme", libelle: "Assistant IA", description: "Lecture seule : l'IA peut lire et résumer, jamais écrire." },
-    { cle: "integration_externe", libelle: "Intégration", description: "Compte machine pour les connecteurs, sans connexion humaine." },
-  ].map((r) => ({ ...r, utilise: utilises.has(r.cle) }));
+  const roles = ROLES_UTILISATEUR.map((r) => ({ ...r, utilise: utilises.has(r.cle) }));
   return {
     ok: true,
     message: `${roles.length} rôles disponibles.`,
