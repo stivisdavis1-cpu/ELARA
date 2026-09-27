@@ -44,6 +44,17 @@ export interface ActionPage {
   naviguer?: string;
   /** insère un champ fichier dont le contenu est lu puis envoyé en base64 */
   fichier?: { cle: string; label: string; hint?: string; accept?: string };
+  /**
+   * Rend le résultat dans la modale au lieu de le fermer.
+   *
+   * Certaines actions ne produisent pas une ligne en base mais un document —
+   * un manifeste d'agent, un extrait. Le placer dans un toast le rendrait
+   * illisible, et fermer la modale ferait perdre le résultat. Avec `rendu`,
+   * la modale reste ouverte et affiche ce que `executer` a renvoyé.
+   */
+  rendu?: (resultat: ResultatAction) => ReactNode;
+  /** libellé du bouton de validation quand `rendu` est présent */
+  libelleValidation?: string;
 }
 
 export interface ExportPage {
@@ -268,6 +279,7 @@ export function BoutonAction({ action, notifier }: { action: ActionPage; notifie
   const [valeurs, setValeurs] = useState<Record<string, string | number | boolean>>({});
   const [enCours, demarrer] = useTransition();
   const [confirme, setConfirme] = useState(false);
+  const [affichage, setAffichage] = useState<ReactNode>(null);
   const inputFichier = useRef<HTMLInputElement>(null);
 
   const variante = action.variante ?? "primaire";
@@ -287,6 +299,11 @@ export function BoutonAction({ action, notifier }: { action: ActionPage; notifie
       demarrer(async () => {
         try {
           const resultat = await action.executer!(donnees);
+          if (resultat.ok && action.rendu) {
+            // Le rendu prend la main : la modale reste ouverte sur le résultat.
+            setAffichage(action.rendu(resultat));
+            return;
+          }
           notifier(resultat.message, resultat.ok ? "ok" : "ko");
           if (resultat.ok) {
             setOuverte(false);
@@ -357,37 +374,49 @@ export function BoutonAction({ action, notifier }: { action: ActionPage; notifie
       {ouverte ? (
         <Modale
           titre={action.libelle}
-          sousTitre="Les valeurs sont enregistrées immédiatement en base."
-          onFermer={() => setOuverte(false)}
+          sousTitre={affichage ? undefined : "Les valeurs sont enregistrées immédiatement en base."}
+          onFermer={() => { setOuverte(false); setAffichage(null); }}
           pied={
-            <>
-              <button type="button" className="btn btn-ghost" onClick={() => setOuverte(false)}>
-                Annuler
-              </button>
+            affichage ? (
               <button
                 type="button"
                 className="btn btn-primary teal"
-                disabled={enCours}
-                onClick={() => {
-                  const donnees: Record<string, unknown> = { ...valeurs };
-                  if (action.fichier && inputFichier.current?.files?.[0]) {
-                    const fichier = inputFichier.current.files[0];
-                    const lecteur = new FileReader();
-                    lecteur.onload = () => {
-                      donnees[action.fichier!.cle] = String(lecteur.result ?? "").split(",")[1] ?? "";
-                      executer(donnees);
-                    };
-                    lecteur.readAsDataURL(fichier);
-                    return;
-                  }
-                  executer(donnees);
-                }}
+                onClick={() => { setOuverte(false); setAffichage(null); }}
               >
-                {enCours ? "Enregistrement…" : "Enregistrer"}
+                Fermer
               </button>
-            </>
+            ) : (
+              <>
+                <button type="button" className="btn btn-ghost" onClick={() => setOuverte(false)}>
+                  Annuler
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary teal"
+                  disabled={enCours}
+                  onClick={() => {
+                    const donnees: Record<string, unknown> = { ...valeurs };
+                    if (action.fichier && inputFichier.current?.files?.[0]) {
+                      const fichier = inputFichier.current.files[0];
+                      const lecteur = new FileReader();
+                      lecteur.onload = () => {
+                        donnees[action.fichier!.cle] = String(lecteur.result ?? "").split(",")[1] ?? "";
+                        executer(donnees);
+                      };
+                      lecteur.readAsDataURL(fichier);
+                      return;
+                    }
+                    executer(donnees);
+                  }}
+                >
+                  {enCours ? "Enregistrement…" : (action.libelleValidation ?? "Enregistrer")}
+                </button>
+              </>
+            )
           }
         >
+          {affichage ?? (
+            <>
           {action.fichier ? (
             <div className="field">
               <label className="field-label">{action.fichier.label}</label>
@@ -412,6 +441,8 @@ export function BoutonAction({ action, notifier }: { action: ActionPage; notifie
               onChange={(v) => setValeurs((actuel) => ({ ...actuel, [champ.cle]: v }))}
             />
           ))}
+            </>
+          )}
         </Modale>
       ) : null}
 

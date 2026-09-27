@@ -47,6 +47,38 @@ export default function DocumentsPage() {
   const [preview, setPreview] = useState<DocRow | null>(null);
   const [error, setError] = useState('');
   const [detail, setDetail] = useState('');
+  // Le filtre ci-dessus ne porte que sur la page chargée ; la recherche, elle,
+  // interroge l'index plein texte et sémantique de toute la GED — c'est ce
+  // qui trouve une pièce dont le nom ne dit rien du contenu.
+  const [resultats, setResultats] = useState<{ document_id: string; passage: string; score: number }[] | null>(null);
+  const [rechercheEnCours, setRechercheEnCours] = useState(false);
+
+  const rechercher = async () => {
+    const q = search.trim();
+    if (!q) { setResultats(null); return; }
+    setRechercheEnCours(true);
+    try {
+      const res = await fetch(`/api/scanner/search?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
+      const corps = await res.json().catch(() => null);
+      const data = corps?.data ?? corps;
+      if (!res.ok) {
+        setError(data?.message || 'Recherche impossible.');
+        return;
+      }
+      const passages = Array.isArray(data?.passages) ? data.passages : [];
+      setResultats(
+        passages.map((p: any) => ({
+          document_id: p.document_id ?? p.documentId ?? '',
+          passage: p.texte ?? p.passage ?? p.extrait ?? '',
+          score: typeof p.score === 'number' ? p.score : 0,
+        })),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Recherche impossible.');
+    } finally {
+      setRechercheEnCours(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,9 +166,46 @@ export default function DocumentsPage() {
 
       <div className="card search-card" style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px', padding: '14px 18px' }}>
         <Search className="w-4 h-4" style={{ color: 'var(--text-faint)' }} />
-        <input className="field" style={{ border: 'none', padding: 0 }} placeholder="Filtrer par nom, statut, type…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <button className="btn btn-primary teal">Rechercher</button>
+        <input
+          className="field"
+          style={{ border: 'none', padding: 0 }}
+          placeholder="Filtrer par nom, statut, type… ou rechercher dans le texte des documents"
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); setResultats(null); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') void rechercher(); }}
+        />
+        <button className="btn btn-primary teal" onClick={() => void rechercher()} disabled={rechercheEnCours || !search.trim()}>
+          {rechercheEnCours ? 'Recherche…' : 'Rechercher'}
+        </button>
       </div>
+
+      {resultats ? (
+        <div className="card" style={{ marginBottom: '16px' }}>
+          <div className="section-title" style={{ fontSize: 13 }}>
+            {resultats.length} passage(s) trouvé(s) dans le texte des documents
+          </div>
+          {resultats.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: 'var(--text-dim)', padding: '10px 0' }}>
+              Aucun passage ne correspond à « {search.trim()} ».
+            </div>
+          ) : (
+            <div className="tbl-wrap">
+              <table className="tbl">
+                <thead><tr><th>Document</th><th>Passage</th><th>Score</th></tr></thead>
+                <tbody>
+                  {resultats.map((r, i) => (
+                    <tr key={r.document_id + i}>
+                      <td className="name-cell" style={{ fontSize: 12 }}>{r.document_id}</td>
+                      <td style={{ fontSize: 12 }}>{r.passage}</td>
+                      <td className="mono" style={{ fontSize: 12 }}>{r.score.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="card" style={{ padding: '48px', textAlign: 'center', color: 'var(--text-dim)' }}>
@@ -186,7 +255,11 @@ export default function DocumentsPage() {
                         <td style={{ fontSize: 12, color: 'var(--text-dim)' }}>{fmtDate(d.date)}</td>
                         <td><span className={statusPill(d.statut)}>{d.statut}</span></td>
                         <td style={{ textAlign: 'right' }}>
-                          <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }} ><Folder className="w-3 h-3 inline" style={{ marginRight: 2 }} /> Aperçu</button>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: '4px 8px', fontSize: 12 }}
+                            onClick={(e) => { e.stopPropagation(); setPreview(d); }}
+                          ><Folder className="w-3 h-3 inline" style={{ marginRight: 2 }} /> Aperçu</button>
                         </td>
                       </tr>
                     ))}

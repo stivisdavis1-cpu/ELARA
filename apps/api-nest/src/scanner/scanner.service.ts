@@ -86,10 +86,32 @@ export class ScannerService {
           score_confiance: 0,
           niveau_risque: 0,
           statut_validation: 'en_cours',
-          hash_document: hash ? `${hash}-${docId}` : docId
+          // Le hash de contenu, tel quel. Il portait autrefois le suffixe
+          // `-${docId}`, qui rendait `@@unique([tenant_id, hash_document])`
+          // inopérant : chaque réimport créait un document identique au lieu
+          // d'être refusé, et la Mémoire d'entreprise comptait deux fois la
+          // même pièce.
+          hash_document: hash ?? null
         }
       });
     } catch (e: any) {
+      // Réimport du même fichier : l'index unique a fait son travail. On
+      // renvoie le document existant plutôt qu'une erreur 500, pour que
+      // ré-uploader une facture soit sans conséquence.
+      if (hash && (e?.code === 'P2002' || /unique|duplicate key/i.test(String(e?.message ?? '')))) {
+        const existant = await this.prisma.document.findFirst({
+          where: { tenant_id: tenantId, hash_document: hash, deleted_at: null },
+        });
+        if (existant) {
+          this.logger.log(`Document déjà présent (${hash.slice(0, 12)}…), rien à réimporter.`);
+          return {
+            document_id: existant.id,
+            statut: 'deja_present',
+            message: 'Ce document est déjà dans la GED : le réimport a été ignoré.',
+            document: existant,
+          };
+        }
+      }
       this.logger.warn("Erreur création document DB: " + e.message);
       throw e;
     }
@@ -697,9 +719,14 @@ export class ScannerService {
     )) as any[];
     if (!courant.length) throw new NotFoundException('Élément introuvable.');
 
+    // `confiance` passe à 1 : la valeur n'est plus une déduction, c'est la
+    // lecture directe des pixels de cette zone. La laisser à l'ancien score
+    // afficherait « 30 % » sous une valeur que l'OCR vient de mesurer, ce qui
+    // enverrait l'utilisateur relire un élément déjà confirmé.
     const ligne = (await this.prisma.$queryRawUnsafe(
       `UPDATE document_elements
-          SET valeur = $1, page = $2, zone = $3::jsonb, source = 'ocr', statut = 'valide', updated_at = NOW()
+          SET valeur = $1, page = $2, zone = $3::jsonb, source = 'ocr', statut = 'valide',
+              confiance = 1, updated_at = NOW()
         WHERE id = $4 AND document_id = $5 AND tenant_id = $6
       RETURNING id, nature, label, valeur, page, zone, confiance, statut, source, created_at, updated_at`,
       (zone.valeur ?? '').trim(),
@@ -757,7 +784,7 @@ export class ScannerService {
    * les dates : un terme seul ne dit pas ce qu'il désigne dans ce document.
    * On accepte les deux formes (liste d'objets `{terme, valeur}` issue du
    * nouveau prompt, chaîne « a, b, c » de l'ancienne sortie aplatie) pour ne
-   * sans casser les extractions déjà en base.
+   * pas casser les extractions déjà en base.
    */
   private async semerElements(
     documentId: string,

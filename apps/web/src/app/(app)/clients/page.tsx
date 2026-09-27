@@ -3,8 +3,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { formatCFA, toNum } from "@/lib/utils";
+import { UserPlus, Truck, RefreshCw } from "lucide-react";
 import { getClientsData } from "@/lib/ged-api";
 import type { EntiteRef, FactureLigne, PaiementLigne, BalanceAgee } from "@/lib/ged-api";
+import { BarreActions, HoteNotifications, useRechargementDonnees } from "@/components/page-actions";
+import { creerClientAction, creerFournisseurAction } from "@/lib/actions";
 
 const JOUR = 24 * 60 * 60 * 1000;
 
@@ -50,6 +53,7 @@ export default function ClientsPage() {
   useEffect(() => {
     void Promise.resolve().then(() => load());
   }, [load]);
+  useRechargementDonnees(load);
 
   const impayees = factures.filter(
     (f) => f.statut !== "payee" && f.statut !== "annulee",
@@ -164,6 +168,8 @@ export default function ClientsPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
+      <HoteNotifications />
+
       <div className="topbar">
         <div>
           <div className="eyebrow">
@@ -183,16 +189,49 @@ export default function ClientsPage() {
             Suivi des soldes, relances et historique de paiement — consolidé depuis vos factures.
           </p>
         </div>
-        <div className="topbar-actions">
-          <button
-            className="btn btn-primary teal transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98]"
-            style={{ cursor: "pointer" }}
-            onClick={() => { setLoading(true); setError(null); void load(); }}
-            disabled={loading}
-          >
-            {loading ? "Chargement..." : "Actualiser"}
-          </button>
-        </div>
+        <BarreActions
+          actions={[
+            {
+              libelle: "Ajouter un client",
+              variante: "primaire",
+              icone: <UserPlus className="w-3.5 h-3.5" />,
+              champs: [
+                { cle: "nom", label: "Raison sociale ou nom", type: "texte", requis: true, colonne: "pleine" },
+                { cle: "email", label: "E-mail", type: "email", colonne: "demi" },
+                { cle: "telephone", label: "Téléphone", type: "texte", colonne: "demi" },
+                { cle: "adresse", label: "Adresse", type: "texte", colonne: "pleine" },
+                { cle: "identifiant_fiscal", label: "Identifiant fiscal", type: "texte", colonne: "demi" },
+                { cle: "niu", label: "NIU", type: "texte", colonne: "demi", hint: "Numéro d'identification unique, usuel dans les factored africanes." },
+                { cle: "rccm", label: "RCCM", type: "texte", colonne: "demi", hint: "Registre du commerce et du crédit mobilier." },
+              ],
+              executer: (d) => creerClientAction(d),
+            },
+            {
+              libelle: "Ajouter un fournisseur",
+              variante: "fantome",
+              icone: <Truck className="w-3.5 h-3.5" />,
+              champs: [
+                { cle: "nom", label: "Raison sociale ou nom", type: "texte", requis: true, colonne: "pleine" },
+                { cle: "email", label: "E-mail", type: "email", colonne: "demi" },
+                { cle: "telephone", label: "Téléphone", type: "texte", colonne: "demi" },
+                { cle: "adresse", label: "Adresse", type: "texte", colonne: "pleine" },
+                { cle: "identifiant_fiscal", label: "Identifiant fiscal", type: "texte", colonne: "demi" },
+                { cle: "niu", label: "NIU", type: "texte", colonne: "demi" },
+                { cle: "rccm", label: "RCCM", type: "texte", colonne: "demi" },
+              ],
+              executer: (d) => creerFournisseurAction(d),
+            },
+            {
+              libelle: "Actualiser",
+              variante: "fantome",
+              icone: <RefreshCw className="w-3.5 h-3.5" />,
+              executer: async () => {
+                await load();
+                return { ok: true, message: "Soldes rafraîchis." };
+              },
+            },
+          ]}
+        />
       </div>
 
       <div className="preview-banner" style={{ background: "var(--green-bg)", borderColor: "rgba(22,163,74,0.3)" }}>

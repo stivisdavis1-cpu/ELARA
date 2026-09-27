@@ -6,6 +6,7 @@ import Link from "next/link";
 import { formatCFA, toNum } from "@/lib/utils";
 import { getMobileData } from "@/lib/ged-api";
 import type { CfoSynthese, BalanceAgee, PaiementLigne, FactureLigne } from "@/lib/ged-api";
+import { BoutonExport } from "@/components/page-actions";
 
 const ACTIONS = [
   {
@@ -164,6 +165,24 @@ export default function MobilePage() {
           >
             {loading ? "Chargement..." : "Actualiser"}
           </button>
+          {paiements.length ? (
+            <BoutonExport
+              libelle="Exporter les paiements"
+              nomFichier="paiements-mobile"
+              colonnes={[
+                { cle: "date", label: "Date" },
+                { cle: "tiers", label: "Tiers" },
+                { cle: "montant", label: "Montant" },
+                { cle: "moyen", label: "Moyen" },
+              ]}
+              lignes={paiements.map((p) => ({
+                date: p.date_paiement,
+                tiers: p.client?.nom ?? p.facture?.numero ?? "—",
+                montant: p.montant,
+                moyen: p.mode_paiement ?? "—",
+              }))}
+            />
+          ) : null}
         </div>
       </div>
 

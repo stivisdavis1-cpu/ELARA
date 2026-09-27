@@ -2,35 +2,66 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { getAdminData } from "@/lib/ged-api";
-import type { HealthStatus, DocLigne, EntiteRef } from "@/lib/ged-api";
+import { RefreshCw, Download, Plug, ShieldAlert } from "lucide-react";
+import { getAdminData, getAuditTrail, getAuditResume, getReglagesData, getCompteursValidations, type EntreeAudit, type ResumeAudit, type Integration, type ProfilTenant } from "@/lib/ged-api";
+import { BarreActions, BoutonExport, HoteNotifications, useRechargementDonnees } from "@/components/page-actions";
+
+function dateFR(d: string | null | undefined): string {
+  if (!d) return "—";
+  const x = new Date(d);
+  return Number.isNaN(x.getTime()) ? "—" : x.toLocaleString("fr-FR");
+}
 
 export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [docs, setDocs] = useState<DocLigne[]>([]);
-  const [clients, setClients] = useState<EntiteRef[]>([]);
+  const [health, setHealth] = useState<Awaited<ReturnType<typeof getAdminData>>["health"]>(null);
+  const [docs, setDocs] = useState<Awaited<ReturnType<typeof getAdminData>>["docs"]>([]);
+  const [clients, setClients] = useState<Awaited<ReturnType<typeof getAdminData>>["clients"]>([]);
+  const [audit, setAudit] = useState<EntreeAudit[]>([]);
+  const [resume, setResume] = useState<ResumeAudit | null>(null);
+  const [profil, setProfil] = useState<ProfilTenant | null>(null);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [compteurs, setCompteurs] = useState<Awaited<ReturnType<typeof getCompteursValidations>> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const d = await getAdminData();
-    setHealth(d.health);
-    setDocs(d.docs);
-    setClients(d.clients);
-    setError(d.error);
-    setLoading(false);
+    try {
+      const [base, entrees, resumeAudit, reglages, file] = await Promise.all([
+        getAdminData(),
+        getAuditTrail({ limit: 25 }).catch(() => ({ data: [] as EntreeAudit[], meta: { total: 0, limit: 25, offset: 0 } })),
+        getAuditResume().catch(() => null),
+        getReglagesData().catch(() => null),
+        getCompteursValidations().catch(() => null),
+      ]);
+      setHealth(base.health);
+      setDocs(base.docs);
+      setClients(base.clients);
+      setAudit(entrees.data ?? []);
+      setResume(resumeAudit);
+      setProfil(reglages?.profil ?? null);
+      setIntegrations(reglages?.integrations ?? []);
+      setCompteurs(file);
+      setError(base.error);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
     void Promise.resolve().then(() => load());
   }, [load]);
+  useRechargementDonnees(load);
 
   const services = Object.entries(health?.services ?? {});
   const servicesOk = services.filter(([, v]) => v === "connected").length;
   const archives = docs.filter((d) => !!d.archive).length;
   const aAuditer = docs.filter((d) => d.statut === "À auditer").length;
+  const enAttente = compteurs?.en_attente ?? 0;
+  const echecsAudit = audit.filter((a) => a.statut === "FAILED").length;
 
   return (
     <motion.section
@@ -40,6 +71,8 @@ export default function AdminPage() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
     >
+      <HoteNotifications />
+
       <div className="topbar">
         <div>
           <div className="eyebrow">
@@ -56,30 +89,28 @@ export default function AdminPage() {
           </div>
           <h1 className="page-title">Santé de la plateforme</h1>
           <p className="page-sub">
-            État des services et de la volumétrie de l&apos;espace — relevé à l&apos;instantané.
+            État des services, de la volumétrie et de la traçabilité de votre espace.
           </p>
         </div>
-        <div className="topbar-actions">
-          <button
-            className="btn btn-primary teal transition-all duration-300 ease-out hover:scale-[1.02] active:scale-[0.98]"
-            style={{ cursor: "pointer" }}
-            onClick={() => { setLoading(true); setError(null); void load(); }}
-            disabled={loading}
-          >
-            {loading ? "Chargement..." : "Actualiser"}
-          </button>
-        </div>
-      </div>
-
-      <div className="preview-banner" style={{ background: "var(--amber-bg, rgba(217,119,6,0.08))", borderColor: "rgba(217,119,6,0.3)" }}>
-        <span className="dot" style={{ background: "var(--amber)" }}></span>
-        <div>
-          <strong>Observabilité multi-tenant non exposée</strong><br />
-          <span className="muted">
-            Le tableau de bord opérateur (uptime, latence P95, MRR par palier) nécessite une API
-            d&apos;administration qui n&apos;existe pas encore. Seul l&apos;état des services est réel.
-          </span>
-        </div>
+        <BarreActions
+          actions={[
+            {
+              libelle: "Actualiser",
+              variante: "fantome",
+              icone: <RefreshCw className="w-3.5 h-3.5" />,
+              executer: async () => {
+                await load();
+                return { ok: true, message: "Relevé rafraîchi." };
+              },
+            },
+            {
+              libelle: "Exporter le journal",
+              variante: "fantome",
+              icone: <Download className="w-3.5 h-3.5" />,
+              naviguer: "#v-admin-export",
+            },
+          ]}
+        />
       </div>
 
       {error && (
@@ -107,8 +138,8 @@ export default function AdminPage() {
           <div className="kpi-delta flat">Sur {docs.length} document(s) consolidé(s)</div>
         </div>
         <div className="card hover:-translate-y-1 hover:shadow-[0_12px_30px_rgba(0,0,0,0.06)] transition-all duration-300 ease-out">
-          <div className="kpi-label">Documents à auditer</div>
-          <div className="kpi-value" style={{ color: aAuditer > 0 ? "var(--amber)" : undefined }}>{loading ? "…" : aAuditer}</div>
+          <div className="kpi-label">En attente de validation</div>
+          <div className="kpi-value" style={{ color: enAttente > 0 ? "var(--amber)" : undefined }}>{loading ? "…" : enAttente}</div>
           <div className="kpi-delta flat">Validation humaine requise</div>
         </div>
       </div>
@@ -119,10 +150,7 @@ export default function AdminPage() {
           <div className="section-sub">Relevé direct sur la route de santé de l&apos;API</div>
           <table className="tbl">
             <thead>
-              <tr>
-                <th>Service</th>
-                <th>État</th>
-              </tr>
+              <tr><th>Service</th><th>État</th></tr>
             </thead>
             <tbody>
               {loading ? (
@@ -131,7 +159,7 @@ export default function AdminPage() {
                 <tr><td colSpan={2} style={{ color: "var(--text-faint)", fontSize: "13px", padding: "16px" }}>Route de santé injoignable — vérifiez que l&apos;API est démarrée.</td></tr>
               ) : (
                 services.map(([nom, etat]) => (
-                  <tr key={nom} className="group hover:bg-white hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] hover:-translate-y-0.5 transition-all duration-300">
+                  <tr key={nom} className="group hover:bg-white hover:shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all duration-300">
                     <td className="name-cell">{nom}</td>
                     <td>
                       <span className={`pill ${etat === "connected" ? "pill-success" : "pill-danger"}`}>
@@ -161,52 +189,128 @@ export default function AdminPage() {
               {aAuditer > 0 && (
                 <div className="list-row">
                   <span className="pill" style={{ background: "var(--amber)18", color: "var(--amber)", marginRight: "12px" }}>Avertissement</span>
-                  <span style={{ flex: 1, fontSize: "13px" }}>
-                    {aAuditer} document(s) attendent une validation humaine
-                  </span>
+                  <span style={{ flex: 1, fontSize: "13px" }}>{aAuditer} document(s) attendent une validation humaine</span>
                 </div>
               )}
-              {health && health.status !== "ok" && (
+              {echecsAudit > 0 && (
+                <div className="list-row">
+                  <span className="pill" style={{ background: "var(--red)18", color: "var(--red)", marginRight: "12px" }}>Échecs</span>
+                  <span style={{ flex: 1, fontSize: "13px" }}>{echecsAudit} écriture(s) en échec sur les {audit.length} dernières</span>
+                </div>
+              )}
+              {services.length > 0 && servicesOk < services.length && (
                 <div className="list-row">
                   <span className="pill" style={{ background: "var(--red)18", color: "var(--red)", marginRight: "12px" }}>Critique</span>
-                  <span style={{ flex: 1, fontSize: "13px" }}>La route de santé signale un état « {health.status} »</span>
+                  <span style={{ flex: 1, fontSize: "13px" }}>{services.length - servicesOk} service(s) déconnecté(s)</span>
                 </div>
               )}
-              {aAuditer === 0 && (!health || health.status === "ok") && (
+              {aAuditer === 0 && echecsAudit === 0 && servicesOk === services.length && services.length > 0 && (
                 <div className="list-row">
                   <span className="pill" style={{ background: "var(--green)18", color: "var(--green)", marginRight: "12px" }}>OK</span>
                   <span style={{ flex: 1, fontSize: "13px" }}>
-                    Aucune alerte : services connectés et aucun document en attente de validation.
+                    Services connectés, aucun document ni aucune écriture en attente.
                   </span>
                 </div>
               )}
             </>
           )}
-          <div style={{ fontSize: "11.5px", color: "var(--text-dim)", marginTop: "14px", lineHeight: 1.7 }}>
-            La supervision multi-tenant (consommation par tenant, pics, coûts) n&apos;est pas
-            encore exposée par l&apos;API : ces indicateurs resteront vides tant que le module
-            d&apos;administration ne sera pas branché.
-          </div>
         </div>
       </div>
 
-      <div className="card">
-        <div className="section-title">Volumétrie de cet espace</div>
-        <div className="section-sub">Les seules mesures disponibles : le contenu de votre mémoire d&apos;entreprise</div>
+      <div className="grid g2" style={{ marginBottom: "16px" }}>
+        <div className="card">
+          <div className="section-title">Volumétrie de cet espace</div>
+          <div className="section-sub">Mesures sur les données consolidées du tenant</div>
+          <table className="tbl">
+            <thead><tr><th>Indicateur</th><th>Valeur</th></tr></thead>
+            <tbody>
+              <tr><td className="name-cell">Contacts clients référencés</td><td className="mono">{loading ? "…" : clients.length}</td></tr>
+              <tr><td className="name-cell">Documents consolidés</td><td className="mono">{loading ? "…" : docs.length}</td></tr>
+              <tr><td className="name-cell">Documents archivés</td><td className="mono">{loading ? "…" : archives}</td></tr>
+              <tr><td className="name-cell">Documents à auditer</td><td className="mono">{loading ? "…" : aAuditer}</td></tr>
+              <tr><td className="name-cell">Écritures journalisées</td><td className="mono">{loading ? "…" : (resume?.total ?? "—")}</td></tr>
+              <tr><td className="name-cell">Plan</td><td className="mono">{profil?.plan ?? "—"}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="card">
+          <div className="section-title">Connecteurs</div>
+          <div className="section-sub">
+            {integrations.length === 0 ? "Aucun connecteur enregistré" : `${integrations.length} connecteur(s) · ${integrations.filter((i) => i.actif).length} actif(s)`}
+          </div>
+          {integrations.length === 0 ? (
+            <div style={{ padding: "18px 2px", color: "var(--text-faint)", fontSize: "13px" }}>
+              Ajoutez des connecteurs depuis Paramètres pour brancher vos outils.
+            </div>
+          ) : (
+            integrations.map((i) => (
+              <div key={i.id} className="list-row">
+                <Plug className="w-3.5 h-3.5" style={{ color: "var(--teal-deep)", marginRight: 10 }} />
+                <span style={{ flex: 1, fontSize: "13px" }}>{i.nom}</span>
+                <span className={`pill ${i.actif ? "pill-success" : "pill-neutral"}`}>{i.actif ? "Actif" : "Inactif"}</span>
+                {i.dernier_statut ? (
+                  <span className={`pill ${i.dernier_statut < 400 ? "pill-success" : "pill-danger"}`}>HTTP {i.dernier_statut}</span>
+                ) : null}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: "16px" }}>
+        <div className="section-title">Journal d&apos;audit</div>
+        <div className="section-sub">Dernières écritures de l&apos;espace, successes comme échecs</div>
         <table className="tbl">
           <thead>
-            <tr>
-              <th>Indicateur</th>
-              <th>Valeur</th>
-            </tr>
+            <tr><th>Action</th><th>Entité</th><th>Résultat</th><th>Horodatage</th></tr>
           </thead>
           <tbody>
-            <tr><td className="name-cell">Contacts clients référencés</td><td className="mono">{loading ? "…" : clients.length}</td></tr>
-            <tr><td className="name-cell">Documents consolidés</td><td className="mono">{loading ? "…" : docs.length}</td></tr>
-            <tr><td className="name-cell">Documents archivés</td><td className="mono">{loading ? "…" : archives}</td></tr>
-            <tr><td className="name-cell">Documents à auditer</td><td className="mono">{loading ? "…" : aAuditer}</td></tr>
+            {loading ? (
+              <tr><td colSpan={4} style={{ color: "var(--text-faint)", fontSize: "13px", padding: "16px" }}>Chargement…</td></tr>
+            ) : audit.length === 0 ? (
+              <tr><td colSpan={4} style={{ color: "var(--text-faint)", fontSize: "13px", padding: "16px" }}>Aucune écriture journalisée.</td></tr>
+            ) : (
+              audit.slice(0, 10).map((a) => (
+                <tr key={a.id} className="group hover:bg-white transition-all duration-300">
+                  <td style={{ fontSize: "12.5px" }}>{a.action}</td>
+                  <td style={{ fontSize: "12px" }}>{a.entite_concernee}</td>
+                  <td>
+                    <span className={`pill ${a.statut === "SUCCESS" ? "pill-success" : "pill-danger"}`} title={a.metadata?.erreur ?? ""}>
+                      {a.statut === "SUCCESS" ? "Succès" : "Échec"}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: "12px", color: "var(--text-dim)" }}>{dateFR(a.created_at)}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
+        <div style={{ fontSize: "11.5px", color: "var(--text-faint)", marginTop: 12, lineHeight: 1.7 }}>
+          <ShieldAlert className="w-3.5 h-3.5" style={{ verticalAlign: "-2px", marginRight: 6 }} />
+          Cette console est cantonnée à votre espace. La supervision transversale — uptime, latence
+          P95, revenu par palier, consommation comparée des tenants — n&apos;a pas sa place ici :
+          elle supposerait qu&apos;un administrateur d&apos;un tenant puisse lire les métriques des
+          autres, ce que l&apos;isolation multi-tenant interdit. Ces indicateurs appartiennent à une
+          console d&apos;exploitation distincte, hors du périmètre d&apos;une application louée par
+          client.
+        </div>
+      </div>
+
+      <div id="v-admin-export" className="card">
+        <BoutonExport
+          libelle="Exporter le journal en CSV"
+          nomFichier="audit-espace.csv"
+          colonnes={[
+            { cle: "created_at", label: "Horodatage" },
+            { cle: "action", label: "Action" },
+            { cle: "entite_concernee", label: "Entité" },
+            { cle: "acteur_type", label: "Auteur" },
+            { cle: "statut", label: "Résultat" },
+            { cle: "erreur", label: "Erreur" },
+          ]}
+          lignes={audit.map((a) => ({ ...a, erreur: a.metadata?.erreur ?? "" })) as unknown as Record<string, unknown>[]}
+        />
       </div>
     </motion.section>
   );

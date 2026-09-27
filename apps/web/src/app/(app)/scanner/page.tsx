@@ -125,6 +125,36 @@ export default function ScannerPage() {
   const [newFieldName, setNewFieldName] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewSize, setPreviewSize] = useState<{w: number, h: number, nw: number, nh: number} | null>(null);
+  // Recherche sémantique : elle interroge l'index de la GED et rend les
+  // passages trouvés. Auparavant, la touche Entrée ouvrait une alerte JSON —
+  // utile en développement, illisible pour un utilisateur.
+  const [requete, setRequete] = useState('');
+  const [passages, setPassages] = useState<{ document_id: string; texte: string; score: number }[] | null>(null);
+  const [modeRecherche, setModeRecherche] = useState('');
+  const [rechercheEnCours, setRechercheEnCours] = useState(false);
+
+  const lancerRecherche = async () => {
+    const q = requete.trim();
+    if (!q) { setPassages(null); setModeRecherche(''); return; }
+    setRechercheEnCours(true);
+    try {
+      const res = await fetch('/api/scanner/search?q=' + encodeURIComponent(q));
+      const corps = await res.json().catch(() => null);
+      const data = corps?.data ?? corps;
+      setModeRecherche(data?.mode ?? 'texte');
+      const liste = Array.isArray(data?.passages) ? data.passages : [];
+      setPassages(liste.map((p: any) => ({
+        document_id: p.document_id ?? p.documentId ?? '',
+        texte: p.texte ?? p.passage ?? p.extrait ?? '',
+        score: typeof p.score === 'number' ? p.score : 0,
+      })));
+    } catch {
+      setPassages([]);
+      setModeRecherche('indisponible');
+    } finally {
+      setRechercheEnCours(false);
+    }
+  };
 
   // La liste démarre vide : seules les données réelles (uploads persistés en BDD
   // + archives GED) apparaissent, restaurées depuis le backend au chargement.
@@ -434,27 +464,53 @@ export default function ScannerPage() {
             <h1 className="page-title">Scanner Documentaire (Omni-Doc)</h1>
             <p className="page-sub">Importez n'importe quel document (Factures, Contrats, KYC). L'OCR intelligent extrait tout le contenu et le structure automatiquement.</p>
             <div style={{ marginTop: '16px', display: 'flex', gap: '8px', maxWidth: '400px' }}>
-              <input 
-                type="text" 
-                placeholder="Recherche Sémantique (ex: 'clause de résiliation')" 
+              <input
+                type="text"
+                placeholder="Recherche Sémantique (ex: 'clause de résiliation')"
                 className="input-field"
                 style={{ flex: 1, padding: '8px 12px', fontSize: '13px' }}
-                onKeyDown={async (e) => {
-                  if (e.key === 'Enter') {
-                    try {
-                      const res = await fetch('/api/scanner/search?q=' + encodeURIComponent(e.currentTarget.value));
-                      const data = await res.json();
-                      alert(JSON.stringify(data.data || data, null, 2));
-                    } catch(err) {
-                      console.error(err);
-                    }
-                  }
-                }}
+                value={requete}
+                onChange={(e) => { setRequete(e.target.value); setPassages(null); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') void lancerRecherche(); }}
               />
-              <button className="btn btn-primary teal" style={{ padding: '8px 16px' }}>Chercher</button>
+              <button
+                className="btn btn-primary teal"
+                style={{ padding: '8px 16px' }}
+                onClick={() => void lancerRecherche()}
+                disabled={rechercheEnCours || !requete.trim()}
+              >
+                {rechercheEnCours ? 'Recherche…' : 'Chercher'}
+              </button>
             </div>
           </div>
         </div>
+
+        {passages ? (
+          <div className="card" style={{ marginTop: '16px' }}>
+            <div className="section-title" style={{ fontSize: 13 }}>
+              {passages.length} passage(s) — index {modeRecherche}
+            </div>
+            {passages.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--text-dim)', padding: '10px 0' }}>
+                Aucun passage ne correspond à « {requete.trim()} ».
+              </div>
+            ) : (
+              <div className="dossier-chip-row" style={{ marginTop: 8 }}>
+                {passages.map((p, i) => (
+                  <button
+                    key={p.document_id + i}
+                    className="dossier-chip"
+                    style={{ cursor: 'pointer', textAlign: 'left', maxWidth: '100%' }}
+                    title={p.score.toFixed(2)}
+                    onClick={() => p.document_id && setSelectedDoc(p.document_id)}
+                  >
+                    <strong>{p.document_id}</strong> — {p.texte}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
 
       <div className={`scanner-layout ${selectedDoc ? 'has-doc' : ''} ${!historyOpen && selectedDoc ? 'history-closed' : ''}`}>

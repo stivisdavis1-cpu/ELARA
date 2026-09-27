@@ -1,14 +1,161 @@
-﻿import { Portee } from "@/components/page-actions";
+﻿"use client";
+
+import { Portee, BoutonAction, HoteNotifications, type ActionPage, type ChampAction } from "@/components/page-actions";
 import { BoutonWebhookLive } from "@/components/webhook-live";
 import React from "react";
 
+/**
+ * Domaines que la plateforme sait governorer aujourd'hui. Le manifeste est
+ * validé contre cette liste : proposer un agent hors périmètre n'est pas une
+ * inscription en liste d'attente, c'est une demande qui ne peut pas être
+ * satisfaite aujourd'hui — autant le dire que faire semblant.
+ */
+const DOMAINES = ["finance", "commercial", "operationnel", "rh", "juridique", "achats"];
+const EDITEURS = ["interne", "partenaire", "tiers"];
+
+const AGENTS_FUTURS = [
+  { cle: "rh", nom: "Assistant RH", domaine: "rh" },
+  { cle: "juridique", nom: "Assistant Juridique", domaine: "juridique" },
+  { cle: "achats", nom: "Assistant Achats", domaine: "achats" },
+];
+
+/**
+ * Construit le manifeste à partir des réponses. Les permissions sont dérivées
+ * du domaine plutôt que laissées en texte libre : un manifeste qui déclare
+ * `factures:lire` pour un agent RH serait rejeté à la revue de gouvernance,
+ * autant l'alerter dans le formulaire.
+ */
+function construireManifeste(v: Record<string, unknown>) {
+  const domaine = String(v.domaine ?? "").trim();
+  const editeur = String(v.editeur ?? "interne");
+  const identifiant = String(v.agent_id ?? "").trim();
+  const version = String(v.version ?? "1.0").trim() || "1.0";
+
+  const lecture = ["profil:lire", "documents:lire"];
+  const actions: Record<string, string[]> = {
+    finance: ["tresorerie:lire", "paiements:lire", "generer_rapport"],
+    commercial: ["clients:lire", "preparer_relance", "generer_previson"],
+    operationnel: ["stocks:lire", "fournisseurs:lire", "signaler_anomalie"],
+    rh: ["employes:lire", "preparer_contrat"],
+    juridique: ["contrats:lire", "signaler_risque"],
+    achats: ["fournisseurs:lire", "preparer_commande"],
+  };
+  const permissions = [...lecture, ...(actions[domaine] ?? ["documents:lire"])];
+
+  return {
+    agent_id: identifiant,
+    domaine,
+    editeur,
+    version,
+    permissions_business_memory: permissions,
+    actions_exposees: (actions[domaine] ?? []).filter((a) => !a.endsWith(":lire")),
+    validation_humaine: v.validation_humaine === "non" ? "requise avant tout envoi sensible" : "requise avant tout envoi",
+    modele_ia: "routing multi-fournisseurs (AI Gateway)",
+    quotas: "selon palier tarifaire du tenant",
+  };
+}
+
 export default function AgentsPage() {
+  const champsAgent = (domaineParDefaut: string): ChampAction[] => [
+    {
+      cle: "agent_id",
+      label: "Identifiant de l'agent",
+      type: "texte",
+      hint: "Minuscules et tirets — ex. rh-conges. C'est la clé de publication dans le registre.",
+      requis: true,
+    },
+    {
+      cle: "domaine",
+      label: "Domaine",
+      type: "select",
+      options: DOMAINES.map((d) => ({ valeur: d, libelle: d })),
+      defaut: domaineParDefaut,
+    },
+    {
+      cle: "editeur",
+      label: "Éditeur",
+      type: "select",
+      options: EDITEURS.map((e) => ({ valeur: e, libelle: e })),
+      defaut: "interne",
+    },
+    { cle: "version", label: "Version", type: "texte", defaut: "1.0" },
+  ];
+
+  const proposer = (libelle: string, domaine: string): ActionPage => ({
+    libelle,
+    icone: null,
+    variante: "fantome",
+    confirmation: `Cette action génère le manifeste de soumission. Rien n'est publié : la proposition part en revue de gouvernance.`,
+    champs: champsAgent(domaine),
+    libelleValidation: "Générer le manifeste",
+    executer: async (donnees) => {
+      const m = construireManifeste(donnees);
+      if (!m.agent_id) return { ok: false, message: "Renseignez l'identifiant de l'agent." };
+      if (!m.domaine) return { ok: false, message: "Choisissez un domaine." };
+      const texte = JSON.stringify(m, null, 2);
+      return {
+        ok: true,
+        message: "Manifeste généré. Il reste à l'envoyer à la gouvernance pour publication.",
+        rendu: () => (
+          <div>
+            <div className="note note-ok">
+              Manifeste conforme au format de la plateforme. Les permissions ont été dérivées du
+              domaine « {m.domaine} » : une liste écrite à la main aurait été rejetée à la revue.
+            </div>
+            <pre
+              style={{
+                margin: 0,
+                fontFamily: "monospace",
+                fontSize: 12,
+                lineHeight: 1.8,
+                color: "var(--ink-2)",
+                background: "var(--paper)",
+                border: "1px solid var(--line)",
+                borderRadius: 9,
+                padding: "16px 18px",
+                overflowX: "auto",
+                maxHeight: 320,
+              }}
+            >
+              {texte}
+            </pre>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => navigator.clipboard?.writeText(texte)}
+              >
+                Copier le manifeste
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary teal"
+                onClick={() => {
+                  const blob = new Blob([texte], { type: "application/json" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `${m.agent_id}.manifest.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+              >
+                Télécharger
+              </button>
+            </div>
+          </div>
+        ),
+      } as never;
+    },
+  });
+
   return (
     <>
-    <div dangerouslySetInnerHTML={{ __html: `<section class="view" id="v-agents">
+      <HoteNotifications />
+      <div dangerouslySetInnerHTML={{ __html: `<section class="view" id="v-agents">
 <div class="topbar">
     <div><div class="eyebrow"><svg class="wave-rule" viewBox="0 0 46 14" fill="none"><path d="M0 7h4L6 2l4 10 3-9 2 6 3-6 3 6 2-6 3 9 4-10 2 5h4" stroke="url(#wg)" stroke-width="1.4" stroke-linecap="round" fill="none"></path><defs><linearGradient id="wg" x1="0" y1="0" x2="46" y2="0"><stop stop-color="#A9761F"></stop><stop offset="1" stop-color="#1A4A3C"></stop></linearGradient></defs></svg><span>Écosystème Avancé</span></div>
-    <h1 class="page-title">Agents &amp; Extensions</h1>
+    <h1 class="page-title">Agents &amp; extensions</h1>
     <p class="page-sub">Directeur Financier Virtuel est le premier agent connecté à votre Mémoire d’entreprise. Chaque agent suivant — interne, partenaire ou tiers — rejoint la même plateforme, sans jamais dupliquer vos données.</p></div>
     <div class="topbar-actions">
     </div>
@@ -17,7 +164,7 @@ export default function AgentsPage() {
 <div class="section-title">Agent actif</div>
 <div class="section-sub">Raisonne exclusivement sur les données réelles de votre entreprise</div>
 <div class="grid g3" style="margin-bottom:24px;">
-  
+
     <div class="card rm-card">
       <span class="pill pill-success rm-status">Actif</span>
       <div style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--gold-bg);color:var(--teal-deep);margin-bottom:10px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l5-6 4 3 6-8" stroke-linecap="round" stroke-linejoin="round"></path><path d="M14 6h4v4" stroke-linecap="round" stroke-linejoin="round"></path></svg></div>
@@ -30,7 +177,7 @@ export default function AgentsPage() {
 <div class="section-title">Prochains agents (même socle, même registre)</div>
 <div class="section-sub">Roadmap déjà planifiée — activés progressivement sans reconstruction de la plateforme</div>
 <div class="grid g3" style="margin-bottom:24px;">
-  
+
     <div class="card rm-card">
       <span class="pill pill-warning rm-status">En cours · V2</span>
       <div style="width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--paper);color:var(--ink-3);margin-bottom:10px;"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 17l6-6 4 4 8-9" stroke-linecap="round" stroke-linejoin="round"></path><path d="M15 6h6v6" stroke-linecap="round" stroke-linejoin="round"></path><path d="M3 21h18" stroke-linecap="round"></path></svg></div>
@@ -54,44 +201,34 @@ export default function AgentsPage() {
 <div class="section-title">Extensions futures</div>
 <div class="section-sub">Réservées dans l’architecture (Partie X / XXXIV) — hors périmètre du MVP actuel</div>
 <div class="grid g3" style="margin-bottom:24px;">
-  
+${AGENTS_FUTURS.map((a) => `
     <div class="card" style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;">
       <span class="pill pill-neutral">Extension future</span>
-      <div style="font-family:var(--font-heading);font-size:15px;font-weight:700;">Assistant RH</div>
-      <button class="btn btn-ghost" style="padding:7px 14px;font-size:12px;">Rejoindre la liste d’attente</button>
-    </div>
-    <div class="card" style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;">
-      <span class="pill pill-neutral">Extension future</span>
-      <div style="font-family:var(--font-heading);font-size:15px;font-weight:700;">Assistant Juridique</div>
-      <button class="btn btn-ghost" style="padding:7px 14px;font-size:12px;">Rejoindre la liste d’attente</button>
-    </div>
-    <div class="card" style="display:flex;flex-direction:column;align-items:flex-start;gap:10px;">
-      <span class="pill pill-neutral">Extension future</span>
-      <div style="font-family:var(--font-heading);font-size:15px;font-weight:700;">Assistant Achats</div>
-      <button class="btn btn-ghost" style="padding:7px 14px;font-size:12px;">Rejoindre la liste d’attente</button>
-    </div>
+      <div style="font-family:var(--font-heading);font-size:15px;font-weight:700;">${a.nom}</div>
+      <div data-emplacement="${a.cle}"></div>
+    </div>`).join("")}
 </div>
 
 <div class="card" style="margin-bottom:24px;">
   <div class="section-title">Comment un agent rejoint Elara</div>
   <div class="section-sub">Le même cycle s’applique à un agent interne, partenaire ou tiers</div>
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-    
+
       <span class="pill pill-info">Proposition</span><span style="color:var(--text-faint);font-size:13px;">→</span>
-    
+
       <span class="pill pill-info">Sandbox</span><span style="color:var(--text-faint);font-size:13px;">→</span>
-    
+
       <span class="pill pill-info">Gouvernance</span><span style="color:var(--text-faint);font-size:13px;">→</span>
-    
+
       <span class="pill pill-info">Publication limitée</span><span style="color:var(--text-faint);font-size:13px;">→</span>
-    
+
       <span class="pill pill-info">Publication générale</span>
-    
+
   </div>
 </div>
 
 <div class="grid g3" style="margin-bottom:24px;">
-  
+
     <div class="card">
       <div class="section-title" style="font-size:14px;">Agents internes</div>
       <span class="pill pill-neutral" style="margin-bottom:10px;">Cycle standard</span>
@@ -109,10 +246,10 @@ export default function AgentsPage() {
     </div>
 </div>
 
-<div class="ai-card">
-  <div class="ai-badge"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4h4a1 1 0 0 1 1 1v2.2a1.8 1.8 0 0 0 2.6 1.6A1.8 1.8 0 0 1 19.2 10.4 1.8 1.8 0 0 0 20 13a1.8 1.8 0 0 1-1.6 2.6H16a1 1 0 0 1-1-1v-2.2a1.8 1.8 0 0 0-3.4 0V16a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.2a1.8 1.8 0 0 0-2.6-1.6A1.8 1.8 0 0 1 4.8 9 1.8 1.8 0 0 0 4 6.4 1.8 1.8 0 0 1 5.6 3.8 1.8 1.8 0 0 0 8 5.2 1 1 0 0 1 9 4Z" stroke-linejoin="round" stroke-linecap="round"></path></svg>Exemple de manifeste d’agent</div>
+<div class="ai-card" id="manifeste-exemple">
+  <div class="ai-badge"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4h4a1 1 0 0 1 1 1v2.2a1.8 1.8 0 0 0 2.6 1.6A1.8 1.8 0 0 1 19.2 10.4 1.8 1.8 0 0 0 20 13a1.8 1.8 0 0 1-1.6 2.6H16a1 1 0 0 1-1-1v-2.2a1.8 1.8 0 0 0-3.4 0V16a1.8 1.8 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.2a1.8 1.8 0 0 0-2.6-1.6A1.8 1.8 0 0 1 4.8 9 1.8 1.8 0 0 1 6 6.4 1.8 1.8 0 0 1 5.6 3.8 1.8 1.8 0 0 1 8 5.2 1 1 0 0 1 9 4Z" stroke-linejoin="round" stroke-linecap="round"></path></svg>Exemple de manifeste d’agent</div>
   <pre style="margin:0;font-family:monospace;font-size:12px;line-height:1.85;color:var(--ink-2);background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:16px 18px;overflow-x:auto;">{
-  "agent_id": "cfo-Avancé",
+  "agent_id": "cfo-avance",
   "domaine": "finance",
   "editeur": "interne",
   "version": "1.0",
@@ -125,10 +262,31 @@ export default function AgentsPage() {
   <div style="font-size:11.5px;color:var(--text-dim);margin-top:10px;">Ce même format sera utilisé pour Assistant Commercial, Assistant Opérationnel, puis pour tout futur agent partenaire ou tiers — c’est la seule porte d’entrée dans la plateforme.</div>
 </div>
 </section>` }} />
-    <Portee selector=".topbar-actions">
-      <BoutonWebhookLive />
-    </Portee>
-  </>
+
+      <Portee selector=".topbar-actions">
+        <BoutonWebhookLive />
+        <BoutonAction
+          action={{
+            libelle: "Proposer un agent",
+            variante: "primaire",
+            confirmation:
+              "Cette action génère le manifeste de soumission à partir du domaine choisi. Rien n'est publié : le manifeste part en revue de gouvernance.",
+            champs: champsAgent("finance"),
+            libelleValidation: "Générer le manifeste",
+            executer: async (donnees) => proposer("Proposer un agent", "finance").executer!(donnees),
+          }}
+          notifier={() => {}}
+        />
+      </Portee>
+
+      {AGENTS_FUTURS.map((a) => (
+        <Portee key={a.cle} selector={`[data-emplacement="${a.cle}"]`}>
+          <BoutonAction
+            action={proposer(`Rejoindre la liste d'attente — ${a.nom}`, a.domaine)}
+            notifier={() => {}}
+          />
+        </Portee>
+      ))}
+    </>
   );
 }
-

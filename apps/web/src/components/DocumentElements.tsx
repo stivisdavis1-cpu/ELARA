@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { AlertTriangle, Check, Loader2, Lock, Plus, Trash2, X } from "lucide-react";
+import { AlertTriangle, Check, Crop, Loader2, Lock, Pencil, Plus, Trash2, X } from "lucide-react";
 import { HoteNotifications } from "./page-actions";
+import OcrZonePicker from "./OcrZonePicker";
 
 /**
  * Fiche des éléments d'information d'un document.
@@ -55,6 +56,13 @@ export default function DocumentElements({ documentId }: { documentId: string })
   const [chargement, setChargement] = useState(false);
   const [ajout, setAjout] = useState(false);
   const [enCours, setEnCours] = useState(false);
+  const [edition, setEdition] = useState<string | null>(null);
+  const [ocrZone, setOcrZone] = useState<string | null>(null);
+  const [brouillon, setBrouillon] = useState<{ nature: string; label: string; valeur: string }>({
+    nature: "mot_cle",
+    label: "",
+    valeur: "",
+  });
   const [form, setForm] = useState<{ nature: string; label: string; valeur: string }>({
     nature: "mot_cle",
     label: "",
@@ -138,6 +146,26 @@ export default function DocumentElements({ documentId }: { documentId: string })
       `/api/scanner/documents/${encodeURIComponent(documentId)}/elements/${encodeURIComponent(elementId)}`,
       { method: "PATCH", body: JSON.stringify({ statut: "valide" }) },
     );
+
+  /** Ouvre la ligne en édition : la valeur lue de travers se corrige ici. */
+  const ouvrirEdition = (element: Element) => {
+    setEdition(element.id);
+    setBrouillon({ nature: element.nature, label: element.label, valeur: element.valeur });
+    setErreur(null);
+  };
+
+  const enregistrerEdition = async (elementId: string) => {
+    if (!brouillon.label.trim() || !brouillon.valeur.trim()) {
+      setErreur("Le champ et sa valeur sont tous les deux obligatoires.");
+      return;
+    }
+    const ok = await appeler(
+      `/api/scanner/documents/${encodeURIComponent(documentId)}/elements/${encodeURIComponent(elementId)}`,
+      { method: "PATCH", body: JSON.stringify(brouillon) },
+    );
+    // Une correction humaine vaut validation : l'IA ne l'a pas devinée.
+    if (ok) setEdition(null);
+  };
 
   const modifiable = data?.modifiable ?? false;
   const autres = (data?.elements ?? []).filter((e) => e.nature !== "mot_cle");
@@ -261,26 +289,74 @@ export default function DocumentElements({ documentId }: { documentId: string })
               </tr>
             </thead>
             <tbody>
-              {data.mots_cles_valides.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    <span className="dossier-chip">{m.terme}</span>
-                  </td>
-                  <td style={{ fontSize: 12.5 }}>{m.valeur}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {m.confiance === null || m.confiance === undefined
-                      ? "—"
-                      : `${Math.round(m.confiance * 100)} %`}
-                  </td>
-                  {modifiable ? (
+              {data.mots_cles_valides.map((m) => {
+                const complet = data.elements.find((e) => e.id === m.id);
+                if (edition === m.id && complet) {
+                  return (
+                    <tr key={m.id}>
+                      <td colSpan={4}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                          <div className="field" style={{ flex: 1, minWidth: 140 }}>
+                            <label className="field-label">Mot-clé / champ</label>
+                            <input
+                              className="input"
+                              value={brouillon.label}
+                              onChange={(e) => setBrouillon({ ...brouillon, label: e.target.value })}
+                            />
+                          </div>
+                          <div className="field" style={{ flex: 2, minWidth: 200 }}>
+                            <label className="field-label">Valeur</label>
+                            <input
+                              className="input"
+                              value={brouillon.valeur}
+                              onChange={(e) => setBrouillon({ ...brouillon, valeur: e.target.value })}
+                            />
+                          </div>
+                          <button className="btn btn-primary teal" onClick={() => void enregistrerEdition(m.id)} disabled={enCours}>
+                            {enCours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            Valider la correction
+                          </button>
+                          <button className="btn btn-ghost" onClick={() => setEdition(null)}>
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={m.id}>
                     <td>
-                      <button className="delete-btn" onClick={() => supprimer(m.id)} title="Supprimer">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      <span className="dossier-chip">{m.terme}</span>
                     </td>
-                  ) : null}
-                </tr>
-              ))}
+                    <td style={{ fontSize: 12.5 }}>{m.valeur}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>
+                      {m.confiance === null || m.confiance === undefined
+                        ? "—"
+                        : `${Math.round(m.confiance * 100)} %`}
+                    </td>
+                    {modifiable ? (
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {complet ? (
+                            <>
+                              <button className="delete-btn" onClick={() => ouvrirEdition(complet)} title="Corriger">
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button className="delete-btn" onClick={() => setOcrZone(m.id)} title="Relire une zone du document">
+                                <Crop className="w-3.5 h-3.5" />
+                              </button>
+                            </>
+                          ) : null}
+                          <button className="delete-btn" onClick={() => supprimer(m.id)} title="Supprimer">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </>
@@ -314,28 +390,83 @@ export default function DocumentElements({ documentId }: { documentId: string })
               </tr>
             </thead>
             <tbody>
-              {data.a_valider.map((a) => (
-                <tr key={a.id}>
-                  <td style={{ fontSize: 12 }}>{NATURES.find((n) => n.valeur === a.nature)?.libelle ?? a.nature}</td>
-                  <td style={{ fontSize: 12.5 }}>{a.label}</td>
-                  <td style={{ fontSize: 12.5 }}>{a.valeur}</td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {a.confiance === null || a.confiance === undefined ? "—" : `${Math.round(a.confiance * 100)} %`}
-                  </td>
-                  {modifiable ? (
-                    <td>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button className="btn btn-ghost" onClick={() => valider(a.id)} title="Valider">
-                          <Check className="w-3.5 h-3.5" />
-                        </button>
-                        <button className="delete-btn" onClick={() => supprimer(a.id)} title="Supprimer">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+              {data.a_valider.map((a) => {
+                if (edition === a.id) {
+                  return (
+                    <tr key={a.id}>
+                      <td colSpan={5}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                          <div className="field" style={{ minWidth: 130 }}>
+                            <label className="field-label">Nature</label>
+                            <select
+                              className="select"
+                              value={brouillon.nature}
+                              onChange={(e) => setBrouillon({ ...brouillon, nature: e.target.value })}
+                            >
+                              {NATURES.map((n) => (
+                                <option key={n.valeur} value={n.valeur}>
+                                  {n.libelle}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="field" style={{ flex: 1, minWidth: 140 }}>
+                            <label className="field-label">Champ</label>
+                            <input
+                              className="input"
+                              value={brouillon.label}
+                              onChange={(e) => setBrouillon({ ...brouillon, label: e.target.value })}
+                            />
+                          </div>
+                          <div className="field" style={{ flex: 2, minWidth: 200 }}>
+                            <label className="field-label">Valeur retenue</label>
+                            <input
+                              className="input"
+                              value={brouillon.valeur}
+                              onChange={(e) => setBrouillon({ ...brouillon, valeur: e.target.value })}
+                            />
+                          </div>
+                          <button className="btn btn-primary teal" onClick={() => void enregistrerEdition(a.id)} disabled={enCours}>
+                            {enCours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                            Valider
+                          </button>
+                          <button className="btn btn-ghost" onClick={() => setEdition(null)}>
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
+                return (
+                  <tr key={a.id}>
+                    <td style={{ fontSize: 12 }}>{NATURES.find((n) => n.valeur === a.nature)?.libelle ?? a.nature}</td>
+                    <td style={{ fontSize: 12.5 }}>{a.label}</td>
+                    <td style={{ fontSize: 12.5 }}>{a.valeur}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>
+                      {a.confiance === null || a.confiance === undefined ? "—" : `${Math.round(a.confiance * 100)} %`}
                     </td>
-                  ) : null}
-                </tr>
-              ))}
+                    {modifiable ? (
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="delete-btn" onClick={() => ouvrirEdition({ ...a, page: null, statut: "a_valider", source: "ia" })} title="Corriger">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button className="delete-btn" onClick={() => setOcrZone(a.id)} title="Relire une zone du document">
+                            <Crop className="w-3.5 h-3.5" />
+                          </button>
+                          <button className="btn btn-ghost" onClick={() => valider(a.id)} title="Valider tel quel">
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button className="delete-btn" onClick={() => supprimer(a.id)} title="Supprimer">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </>
@@ -350,10 +481,38 @@ export default function DocumentElements({ documentId }: { documentId: string })
             {autres.map((e) => (
               <span key={e.id} className="dossier-chip" title={`Confiance ${e.confiance ?? "—"}`}>
                 {e.label} : {e.valeur}
+                {modifiable ? (
+                  <button
+                    className="delete-btn"
+                    style={{ marginLeft: 6, verticalAlign: "middle" }}
+                    onClick={() => ouvrirEdition(e)}
+                    title="Corriger"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                ) : null}
               </span>
             ))}
           </div>
         </>
+      ) : null}
+
+      {ocrZone ? (
+        <OcrZonePicker
+          documentId={documentId}
+          elementId={ocrZone}
+          headers={headers()}
+          onAnnuler={() => setOcrZone(null)}
+          onResultat={async (valeur) => {
+            // La valeur relue par l'OCR est une mesure, pas une hypothèse :
+            // elle remplace la valeur et passe l'élément en validé.
+            setOcrZone(null);
+            await appeler(
+              `/api/scanner/documents/${encodeURIComponent(documentId)}/elements/${encodeURIComponent(ocrZone)}`,
+              { method: "PATCH", body: JSON.stringify({ valeur, statut: "valide" }) },
+            );
+          }}
+        />
       ) : null}
     </div>
   );
