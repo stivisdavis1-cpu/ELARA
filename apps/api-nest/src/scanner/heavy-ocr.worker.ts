@@ -5,6 +5,7 @@ import { createWorker } from 'tesseract.js';
 
 // Utilisation de requires dynamiques si besoin
 import { createRequire } from 'module';
+import { pythonBin } from './python-bin.js';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 
@@ -43,7 +44,7 @@ async function processHeavyDocument() {
            
            fs.writeFileSync(pdfTmpPath, dataBuffer);
            const scriptPath = path.join(process.cwd(), 'src/scanner/pdf_to_img.py');
-           execSync(`python "${scriptPath}" "${pdfTmpPath}" "${imgTmpPath}"`);
+           execSync(`${pythonBin()} "${scriptPath}" "${pdfTmpPath}" "${imgTmpPath}"`);
            
            const result = await Tesseract.recognize(imgTmpPath, 'fra');
            text = result.data.text;

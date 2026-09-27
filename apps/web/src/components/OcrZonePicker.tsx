@@ -1,8 +1,7 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Crop, Loader2, X } from "lucide-react";
-import { fetchFileBytes } from "@/lib/fileFetch";
 
 /**
  * Relance l'OCR sur une zone précise du document.
@@ -37,6 +36,8 @@ export default function OcrZonePicker({
   onAnnuler: () => void;
 }) {
   const [image, setImage] = useState<string | null>(null);
+  const [pages, setPages] = useState<string[]>([]);
+  const [page, setPage] = useState(0);
   const [chargement, setChargement] = useState(false);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -48,27 +49,45 @@ export default function OcrZonePicker({
     setChargement(true);
     setErreur(null);
     try {
-      const { buffer, mime } = await fetchFileBytes(
-        `/api/scanner/documents/${encodeURIComponent(documentId)}/file?as=base64`,
+      // L'export PNG rasterise la première page et renvoie du JSON base64 :
+      // c'est la seule source qui marche à la fois pour un PDF et pour une
+      // image, et le JSON évite d'exposer un `application/pdf` à fetch().
+      // Le chemin `file?as=base64` rendait les PDF illisibles dans un <img>.
+      const reponse = await fetch(
+        `/api/scanner/documents/${encodeURIComponent(documentId)}/export?format=png`,
+        { cache: "no-store", headers },
       );
-      const octets = new Uint8Array(buffer);
-      // Un PDF n'est pas affichable dans un <img> : on passe par l'export
-      // image du serveur, qui sait rasteriser la première page.
-      if (mime === "application/pdf") {
-        setErreur("Ce document est un PDF : l'aperçu image n'est pas disponible ici. Exportez-le en image depuis le menu du document.");
-        setChargement(false);
+      const corps = await reponse.json().catch(() => null);
+      const data = corps?.data ?? corps;
+      if (!reponse.ok) {
+        setErreur(data?.message || data?.error || `Aperçu indisponible (HTTP ${reponse.status}).`);
         return;
       }
-      const blob = new Blob([octets], { type: mime });
-      setImage(URL.createObjectURL(blob));
+      const pages: string[] = Array.isArray(data?.pages) && data.pages.length
+        ? data.pages
+        : typeof data?.data === "string"
+          ? [data.data]
+          : [];
+      if (pages.length === 0) {
+        setErreur("Ce document n'a aucune page convertible en image.");
+        return;
+      }
+      setPages(pages);
+      setPage(0);
+      setImage(`data:${data?.mime || "image/png"};base64,${pages[0]}`);
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Aperçu indisponible.");
     } finally {
       setChargement(false);
     }
-  }, [documentId]);
+  }, [documentId, headers]);
 
-  if (!image && !chargement && !erreur) void chargerImage();
+  // L'image est en `width:100%` sans hauteur forcée : le conteneur de dessin
+  // a exactement les dimensions de l'image, donc les coordonnées normalisées
+  // du rectangle correspondent pixel pour pixel aux pixels de l'aperçu.
+  useEffect(() => {
+    if (!image && !chargement && !erreur) void chargerImage();
+  }, [image, chargement, erreur, chargerImage]);
 
   const position = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -118,6 +137,9 @@ export default function OcrZonePicker({
       const donnees = new FormData();
       donnees.append("file", blob, `zone-${elementId}.png`);
       donnees.append("zone", JSON.stringify(zone));
+      // La page est 1-indexée côté base : la zone n'a de sens que si on sait
+      // de quelle page elle vient.
+      donnees.append("page", String(page + 1));
 
       const reponse = await fetch(
         `/api/scanner/documents/${encodeURIComponent(documentId)}/elements/${encodeURIComponent(elementId)}/ocr`,
@@ -189,6 +211,30 @@ export default function OcrZonePicker({
         {chargement ? (
           <div style={{ padding: "28px 0", textAlign: "center", color: "var(--text-faint)", fontSize: 13 }}>
             <Loader2 className="w-4 h-4 animate-spin inline" /> Chargement de la page…
+          </div>
+        ) : null}
+
+        {pages.length > 1 ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+            <span style={{ fontSize: 12, color: "var(--text-faint)" }}>Page</span>
+            <select
+              className="select"
+              style={{ maxWidth: 120 }}
+              value={page}
+              onChange={(e) => {
+                const cible = Number(e.target.value);
+                setPage(cible);
+                setImage(`data:image/png;base64,${pages[cible]}`);
+                setZone(null);
+                setDebut(null);
+              }}
+            >
+              {pages.map((_, i) => (
+                <option key={i} value={i}>
+                  {i + 1} / {pages.length}
+                </option>
+              ))}
+            </select>
           </div>
         ) : null}
 

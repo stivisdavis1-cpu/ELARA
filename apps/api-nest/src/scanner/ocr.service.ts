@@ -3,6 +3,7 @@ import Tesseract from 'tesseract.js';
 import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
 import fs from 'fs';
 import path from 'path';
+import { pythonBin } from './python-bin.js';
 
 // Répertoire des scripts Python OCR (pdf_to_img / crop / docx_to_pdf).
 // Survolé par OCR_SCRIPTS_DIR ; défauts : scripts embarqués puis api-ai/services.
@@ -58,7 +59,7 @@ if (!isMainThread && parentPort) {
           fs.writeFileSync(pdfPath, buf);
           // Chemin vers le script python (configurable via OCR_SCRIPTS_DIR)
           const scriptPath = PDF_TO_IMG_SCRIPT();
-          execSync(`python "${scriptPath}" "${pdfPath}" "${imgPath}"`);
+          execSync(`${pythonBin()} "${scriptPath}" "${pdfPath}" "${imgPath}"`);
           const result = await Tesseract.recognize(imgPath, 'fra');
           return result.data.text;
         } finally {
@@ -435,7 +436,7 @@ export class OcrService {
     
     fs.writeFileSync(pdfPath, buffer);
     const scriptPath = PDF_TO_IMG_SCRIPT();
-    execSync(`python "${scriptPath}" "${pdfPath}" "${imgPath}"`);
+    execSync(`${pythonBin()} "${scriptPath}" "${pdfPath}" "${imgPath}"`);
     
     const imgBuffer = fs.readFileSync(imgPath);
     
@@ -460,7 +461,7 @@ export class OcrService {
        const pdfPath = path.join(tmpDir, `src_${Date.now()}.pdf`);
        fs.writeFileSync(pdfPath, buffer);
        const scriptPath = PDF_TO_IMG_SCRIPT();
-       execSync(`python "${scriptPath}" "${pdfPath}" "${imgPath}"`);
+       execSync(`${pythonBin()} "${scriptPath}" "${pdfPath}" "${imgPath}"`);
        fs.unlinkSync(pdfPath);
     } else {
        fs.writeFileSync(imgPath, buffer);
@@ -469,7 +470,7 @@ export class OcrService {
     const croppedPath = path.join(tmpDir, `cropped_${Date.now()}.png`);
     
     // Crop Python script
-    execSync(`python "${CROP_SCRIPT()}" "${imgPath}" "${croppedPath}" ${rect.x} ${rect.y} ${rect.width} ${rect.height}`);
+    execSync(`${pythonBin()} "${CROP_SCRIPT()}" "${imgPath}" "${croppedPath}" ${rect.x} ${rect.y} ${rect.width} ${rect.height}`);
     
     // Tesseract
     const result = await Tesseract.recognize(croppedPath, 'fra');

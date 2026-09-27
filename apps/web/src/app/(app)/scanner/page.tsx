@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import ScannerUploader from "../../../components/ScannerUploader";
 import DocumentViewer from "../../../components/DocumentViewer";
 import DocumentElements from "../../../components/DocumentElements";
 import { FileText, X, AlertTriangle, Menu, Crop, Landmark, Building2, ShieldCheck, ScrollText, CalendarDays, Tags, Scale } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
-import { fetchFileBytes } from "../../../lib/fileFetch";
+import { fetchFileBytes, rectImageContenue } from "../../../lib/fileFetch";
 import { socketScanner } from "@/lib/api-url";
 
 interface ScannedDocument {
@@ -112,6 +112,39 @@ const mimeFromName = (name?: string): string | undefined => {
   return undefined;
 };
 
+/**
+ * Convertit un rectangle dessiné dans le conteneur de l'aperçu en pixels de
+ * l'image naturelle, en tenant compte des bandes vides du `contain`.
+ *
+ * Le rectangle est d'abord rendu relatively à l'image affichée, puis mis à
+ * l'échelle sur ses dimensions réelles. Sans ce passage, un cadre dessiné
+ * dans une bande vide produirait des coordonnées négatives.
+ */
+function versPixelsImage(
+  img: HTMLImageElement,
+  box: { x: number; y: number; w: number; h: number },
+): { x: number; y: number; w: number; h: number } {
+  const conteneur = {
+    largeur: img.clientWidth || img.width,
+    hauteur: img.clientHeight || img.height,
+  };
+  if (!img.naturalWidth || !img.naturalHeight) {
+    return { x: Math.round(box.x), y: Math.round(box.y), w: Math.round(box.w), h: Math.round(box.h) };
+  }
+  const occupe = rectImageContenue(conteneur, {
+    largeur: img.naturalWidth,
+    hauteur: img.naturalHeight,
+  });
+  const ratioX = img.naturalWidth / (occupe.largeur || 1);
+  const ratioY = img.naturalHeight / (occupe.hauteur || 1);
+  return {
+    x: Math.round((box.x - occupe.x) * ratioX),
+    y: Math.round((box.y - occupe.y) * ratioY),
+    w: Math.round(box.w * ratioX),
+    h: Math.round(box.h * ratioY),
+  };
+}
+
 export default function ScannerPage() {
   const { data: session } = useSession();
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
@@ -124,7 +157,9 @@ export default function ScannerPage() {
   const [showFieldPrompt, setShowFieldPrompt] = useState(false);
   const [newFieldName, setNewFieldName] = useState('');
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const [previewSize, setPreviewSize] = useState<{w: number, h: number, nw: number, nh: number} | null>(null);
+  const [erreurPreview, setErreurPreview] = useState<string | null>(null);
   // Recherche sémantique : elle interroge l'index de la GED et rend les
   // passages trouvés. Auparavant, la touche Entrée ouvrait une alerte JSON —
   // utile en développement, illisible pour un utilisateur.
@@ -170,9 +205,14 @@ export default function ScannerPage() {
   }, []);
   const socketRef = useRef<Socket | null>(null);
 
+  // En-tête tenant : le proxy Next ne l'ajoute pas, et sans lui Nest
+  // cherche le document chez « test-tenant » et répond 404. C'est ce qui
+  // faisait échouer l'OCR localisé sur un document rouvert depuis l'historique.
+  const tenantId = (session?.user as { tenantId?: string } | undefined)?.tenantId || 'test-tenant';
+  const entetesApi = useMemo(() => ({ 'x-tenant-id': tenantId }), [tenantId]);
+
   useEffect(() => {
     if (session?.user) {
-      const tenantId = (session.user as { tenantId?: string }).tenantId || 'test-tenant';
       const socket = io(socketScanner(), {
         query: { tenantId }
       });
@@ -324,31 +364,76 @@ export default function ScannerPage() {
     }));
 
     try {
-      const { buffer, mime } = await fetchFileBytes(doc.localFileUrl);
+      const { buffer, mime } = await fetchFileBytes(doc.localFileUrl, entetesApi);
       const fileBlob = new Blob([buffer], { type: mime });
       const formData = new FormData();
       formData.append('file', fileBlob, doc.name);
-      
-      // Conversion des coordonnées (écran -> image naturelle)
-      const ratioX = previewSize.nw / previewSize.w;
-      const ratioY = previewSize.nh / previewSize.h;
-      formData.append('x', String(Math.round(box.x * ratioX)));
-      formData.append('y', String(Math.round(box.y * ratioY)));
-      formData.append('width', String(Math.round(box.w * ratioX)));
-      formData.append('height', String(Math.round(box.h * ratioY)));
+
+      // Conversion des coordonnées (écran -> image naturelle). On passe par le
+      // rectangle réellement occupé par l'image dans le conteneur : le
+      // `object-fit: contain` de l'aperçu laisse des bandes vides, sans ce
+      // calcul le recadrage part ailleurs que sur la zone dessinée.
+      const img = imageRef.current;
+      const zone = img
+        ? versPixelsImage(img, box)
+        : (() => {
+            const ratioX = previewSize.nw / previewSize.w;
+            const ratioY = previewSize.nh / previewSize.h;
+            return {
+              x: Math.round(box.x * ratioX),
+              y: Math.round(box.y * ratioY),
+              w: Math.round(box.w * ratioX),
+              h: Math.round(box.h * ratioY),
+            };
+          })();
+      formData.append('x', String(zone.x));
+      formData.append('y', String(zone.y));
+      formData.append('width', String(Math.max(1, zone.w)));
+      formData.append('height', String(Math.max(1, zone.h)));
 
       const response = await fetch('/api/scanner/documents/crop-ocr', {
         method: 'POST',
         body: formData
       });
-      
+
       if (response.ok) {
         const resultWrapper = await response.json();
         const result = resultWrapper.data || resultWrapper;
+        const texte = String(result.text ?? '').trim();
         setDocuments(current => current.map(d => {
-          if (d.id === docId && d.extractedData) {
-            const updated = { ...d.extractedData };
-            updated[fieldName] = result.text || "[Vide]";
+          if (d.id === docId) {
+            const updated = { ...(d.extractedData || {}) };
+            updated[fieldName] = texte || "[Zone vide]";
+            return { ...d, extractedData: updated };
+          }
+          return d;
+        }));
+
+        // Un champ ajouté à la main doit survivre au rechargement : sans
+        // écriture en base il disparaissait à la navigation suivante, et la
+        // zone recadrée n'était pas mémorisée.
+        try {
+          await fetch(`/api/scanner/documents/${encodeURIComponent(docId)}/elements`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...entetesApi },
+            body: JSON.stringify({
+              nature: 'texte',
+              label: fieldName,
+              valeur: texte,
+              page: 1,
+              zone: { x: zone.x, y: zone.y, w: zone.w, h: zone.h },
+            }),
+          });
+        } catch (e) {
+          console.error("Enregistrement de l'élément impossible", e);
+        }
+      } else {
+        const echec = await response.json().catch(() => null);
+        const message = echec?.message || echec?.error || `OCR localisé refusé (HTTP ${response.status})`;
+        setDocuments(current => current.map(d => {
+          if (d.id === docId) {
+            const updated = { ...(d.extractedData || {}) };
+            updated[fieldName] = `[Erreur OCR] ${message}`;
             return { ...d, extractedData: updated };
           }
           return d;
@@ -357,9 +442,9 @@ export default function ScannerPage() {
     } catch(err) {
       console.error(err);
       setDocuments(current => current.map(d => {
-        if (d.id === docId && d.extractedData) {
-          const updated = { ...d.extractedData };
-          updated[fieldName] = "[Erreur OCR]";
+        if (d.id === docId) {
+          const updated = { ...(d.extractedData || {}) };
+          updated[fieldName] = "[Erreur OCR] " + (err instanceof Error ? err.message : String(err));
           return { ...d, extractedData: updated };
         }
         return d;
@@ -370,11 +455,11 @@ export default function ScannerPage() {
   const handleToggleDrawingMode = async () => {
     if (!isDrawingMode && activeDoc?.localFileUrl) {
       try {
-        const { buffer, mime } = await fetchFileBytes(activeDoc.localFileUrl);
+        const { buffer, mime } = await fetchFileBytes(activeDoc.localFileUrl, entetesApi);
         const fileBlob = new Blob([buffer], { type: mime });
         const formData = new FormData();
         formData.append('file', fileBlob, activeDoc.name);
-        
+
         const response = await fetch('/api/scanner/documents/preview', {
           method: 'POST',
           body: formData
@@ -383,10 +468,20 @@ export default function ScannerPage() {
           const resWrapper = await response.json();
           const res = resWrapper.data || resWrapper;
           setPreviewImage(res.imageBase64);
+          setErreurPreview(null);
+        } else {
+          const echec = await response.json().catch(() => null);
+          setErreurPreview(
+            echec?.message || echec?.error || `Aperçu indisponible (HTTP ${response.status}).`
+          );
         }
-      } catch(e) { console.error("Erreur preview", e); }
+      } catch(e) {
+        console.error("Erreur preview", e);
+        setErreurPreview(e instanceof Error ? e.message : "Aperçu indisponible.");
+      }
     } else {
       setPreviewImage(null);
+      setErreurPreview(null);
     }
     setIsDrawingMode(!isDrawingMode);
     setCurrentBox(null);
@@ -602,6 +697,21 @@ export default function ScannerPage() {
                 >
                   <Crop className="w-4 h-4" /> {isDrawingMode ? 'Désactiver' : 'OCR Localisé'}
                 </button>
+                {isDrawingMode && erreurPreview ? (
+                  <div
+                    style={{
+                      alignSelf: 'center',
+                      padding: '6px 12px',
+                      borderRadius: 8,
+                      background: 'rgba(220,38,38,0.08)',
+                      border: '1px solid rgba(220,38,38,0.25)',
+                      color: 'var(--red)',
+                      fontSize: 12,
+                    }}
+                  >
+                    OCR localisé indisponible — {erreurPreview}
+                  </div>
+                ) : null}
                 <button 
                   className="btn btn-secondary" 
                   style={{ padding: '8px', borderRadius: '50%', background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
@@ -693,10 +803,12 @@ export default function ScannerPage() {
                   </div>
                 )}
                 {activeDoc?.localFileUrl ? (
-                  isDrawingMode && previewImage && activeDoc.mimeType?.includes('pdf') ? (
+                  isDrawingMode && previewImage ? (
                     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                       <img
+                        ref={imageRef}
                         src={previewImage}
+                        alt="Aperçu de la page pour l'OCR localisé"
                         style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                         onLoad={(e) => {
                           const img = e.currentTarget;

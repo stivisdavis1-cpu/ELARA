@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Patch, Delete, Param, Body, Query, UseGuards, UseInterceptors, UploadedFile, UploadedFiles, 
-Req, Res, StreamableFile, UnauthorizedException, BadRequestException } from '@nestjs/common';
+Req, Res, StreamableFile, UnauthorizedException, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname, resolve } from 'path';
@@ -12,6 +12,7 @@ import { ExportService } from './export.service.js';
 import { EventPattern, Payload } from '@nestjs/microservices';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service.js';
 import { SearchService } from './search.service.js';
+import { pythonBin } from './python-bin.js';
 
 // Script Python de conversion DOCX -> PDF, configurable via OCR_SCRIPTS_DIR
 function docxToPdfScript(): string {
@@ -98,7 +99,7 @@ export class ScannerController {
        const absInput = resolve(process.cwd(), file.path);
        const absOutput = resolve(process.cwd(), outputPdfPath);
        try {
-           execSync(`python "${scriptPath}" "${absInput}" "${absOutput}"`);
+           execSync(`${pythonBin()} "${scriptPath}" "${absInput}" "${absOutput}"`);
            file.path = outputPdfPath;
            file.mimetype = 'application/pdf';
            file.originalname = file.originalname.replace(/\.docx?$/i, '.pdf');
@@ -181,7 +182,7 @@ export class ScannerController {
           const absInput = resolve(process.cwd(), file.path);
           const absOutput = resolve(process.cwd(), outputPdfPath);
           try {
-              execSync(`python "${scriptPath}" "${absInput}" "${absOutput}"`);
+              execSync(`${pythonBin()} "${scriptPath}" "${absInput}" "${absOutput}"`);
               file.path = outputPdfPath;
               file.mimetype = 'application/pdf';
               file.originalname = file.originalname.replace(/\.docx?$/i, '.pdf');
@@ -236,15 +237,24 @@ export class ScannerController {
   @ApiOperation({ summary: 'Convertir la première page d\'un document en image pour OCR Zonal' })
   @ApiConsumes('multipart/form-data')
   async getDocumentPreview(@UploadedFile() file: any) {
+    if (!file) {
+      throw new BadRequestException('Aucun fichier reçu : l\'aperçu a besoin du document.');
+    }
     if (file.mimetype.startsWith('image/')) {
       return {
         imageBase64: `data:${file.mimetype};base64,${file.buffer.toString('base64')}`
       };
     }
-    const imgBuffer = await this.scannerService.ocrService.convertToImage(file.buffer);
-    return {
-      imageBase64: `data:image/png;base64,${imgBuffer.toString('base64')}`
-    };
+    try {
+      const imgBuffer = await this.scannerService.ocrService.convertToImage(file.buffer);
+      return {
+        imageBase64: `data:image/png;base64,${imgBuffer.toString('base64')}`
+      };
+    } catch (e: any) {
+      throw new ServiceUnavailableException(
+        `Aperçu indisponible côté serveur : ${e?.message || e}`,
+      );
+    }
   }
 
   @Post('documents/crop-ocr')
@@ -255,13 +265,31 @@ export class ScannerController {
     @UploadedFile() file: any, 
     @Req() req: any
   ) {
+    if (!file) {
+      throw new BadRequestException("Aucun fichier reçu pour l'OCR localisé.");
+    }
     const { x, y, width, height } = req.body;
-    const text = await this.scannerService.ocrService.cropAndOcr(
-      file.buffer, 
-      file.mimetype, 
-      { x: Number(x), y: Number(y), width: Number(width), height: Number(height) }
-    );
-    return { text };
+    const zone = { x: Number(x), y: Number(y), width: Number(width), height: Number(height) };
+    // Un rectangle hors de l'image produirait un crop vide ou une erreur
+    // d'outilichaîne : mieux vaut le dire que renvoyer un texte vide que
+    // l'utilisateur prendrait pour un zone vierge du document.
+    if (![zone.x, zone.y, zone.width, zone.height].every(Number.isFinite) || zone.width <= 0 || zone.height <= 0) {
+      throw new BadRequestException('Zone de recadrage invalide (x, y, width, height requis).');
+    }
+    try {
+      const text = await this.scannerService.ocrService.cropAndOcr(
+        file.buffer, 
+        file.mimetype, 
+        zone
+      );
+      return { text };
+    } catch (e: any) {
+      // Un ENOENT sur python3/crop.py est la panne la plus probable ; sans
+      // ce message on remontait une stack Nest incompréhensible à l'écran.
+      throw new ServiceUnavailableException(
+        `OCR localisé indisponible côté serveur : ${e?.message || e}`,
+      );
+    }
   }
 
   @Get('search')
@@ -424,7 +452,19 @@ export class ScannerController {
     @Req() req: any,
   ) {
     if (!file) throw new BadRequestException('Aucun fichier reçu : la zone à analyser est obligatoire.');
-    const texte = await this.scannerService.ocrService.extractText(file.buffer, file.mimetype || 'image/png');
+    let texte: string;
+    try {
+      texte = await this.scannerService.ocrService.extractText(file.buffer, file.mimetype || 'image/png');
+    } catch (e: any) {
+      throw new ServiceUnavailableException(
+        `OCR de zone indisponible côté serveur : ${e?.message || e}`,
+      );
+    }
+    if (!texte.trim()) {
+      // Un texte vide n'est pas une réponse : la zone était probablement hors
+      // du document. Le dire évite d'écrire une valeur vide en base.
+      throw new BadRequestException('Aucun texte lu dans cette zone — vérifiez le recadrage.');
+    }
     let zone: unknown;
     if (body?.zone) {
       try {
