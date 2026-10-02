@@ -25,6 +25,40 @@ function jetonPerime(accessToken: unknown): boolean {
   }
 }
 
+async function rafraichirJeton(token: any) {
+  try {
+    const url = process.env.KEYCLOAK_ISSUER || "http://localhost:8080/realms/Elara";
+    const formData = new URLSearchParams();
+    formData.append("grant_type", "refresh_token");
+    formData.append("client_id", process.env.KEYCLOAK_CLIENT_ID || "elara-web");
+    if (process.env.KEYCLOAK_CLIENT_SECRET) {
+      formData.append("client_secret", process.env.KEYCLOAK_CLIENT_SECRET);
+    }
+    formData.append("refresh_token", token.refreshToken as string);
+
+    const res = await fetch(`${url}/protocol/openid-connect/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: formData.toString(),
+    });
+
+    if (!res.ok) throw new Error("Erreur rafraichissement");
+    const tokens = await res.json();
+    
+    return {
+      ...token,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token || token.refreshToken,
+    };
+  } catch (error) {
+    console.error("[AUTH] Erreur Refresh Token:", error);
+    return {
+      ...token,
+      error: "RefreshAccessTokenError",
+    };
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     CredentialsProvider({
@@ -89,6 +123,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             email: user.email,
             name: user.name || `${user.given_name} ${user.family_name}`,
             accessToken: tokens.access_token,
+            refreshToken: tokens.refresh_token,
             roles,
             // Tenant porté par le jeton : claim explicite s'il existe,
             // sinon le claim de client Keycloak. Sert d'en-tête
@@ -109,22 +144,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.accessToken = (user as any).accessToken
+        token.refreshToken = (user as any).refreshToken
         token.roles = (user as any).roles || []
         token.tenantId = (user as any).tenantId || null
+        return token
       }
-      // Une session relancée sans nouvelle connexion : le jeton d'accès peut
-      // avoir expiré. On ne le conserve pas, ce qui ramène l'utilisateur vers
-      // l'écran de connexion au lieu de le laisser devant une application qui
-      // répond 401.
-      if (!user && jetonPerime(token.accessToken)) {
-        token.accessToken = undefined
+      
+      if (jetonPerime(token.accessToken)) {
+        if (token.refreshToken) {
+          return await rafraichirJeton(token)
+        } else {
+          token.accessToken = undefined
+          token.error = "RefreshAccessTokenError"
+        }
       }
       return token
     },
     async session({ session, token }) {
-      const accessToken = jetonPerime(token.accessToken) ? undefined : token.accessToken
       // @ts-ignore
-      session.accessToken = accessToken
+      session.accessToken = token.accessToken
+      // @ts-ignore
+      session.error = token.error
       // @ts-ignore
       session.user.roles = (token as any).roles || []
       // @ts-ignore

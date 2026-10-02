@@ -912,8 +912,7 @@ export default function ScannerPage() {
                   <div style={{ fontSize: '12px', color: 'var(--red)' }}>
                     <strong>Alerte détectée</strong><br/>
                     {/* On n'accuse une anomalie que si le document a réellement
-                        été lu, et l'on affiche le risque calculé : un score
-                        figé inventait une alerte sur des pages illisibles. */}
+                            été lu, et l'on affiche le risque calculé. */}
                     {activeDoc.ocrText
                       ? <>Le contenu analysé présente des anomalies. Fraude ou non-conformité potentielle{typeof activeDoc.risque === 'number' ? ` (Score ${activeDoc.risque}/10)` : ''}.</>
                       : <>Analyse impossible : le document n'a pas pu être lu, aucune conclusion sur son contenu n'est possible. Le score de risque n'est pas établi.</>}

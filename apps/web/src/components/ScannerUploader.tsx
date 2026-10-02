@@ -5,7 +5,7 @@ import { Scan, Loader2, CheckCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
 import { socketScanner } from "@/lib/api-url";
-import { useEntrepriseCourante } from "@/components/TenantContext";
+import { useEntrepriseCourante, useEntetesApi } from "@/components/TenantContext";
 
 interface ScannerUploaderProps {
   onScanComplete?: (documents: any[]) => void;
@@ -24,6 +24,7 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
   // L'entreprise courante est lue par le layout côté serveur : sans elle, aucun
   // appel API n'est possible. Elle n'est jamais devinée.
   const tenantId = useEntrepriseCourante() || '';
+  const entetes = useEntetesApi();
 
   useEffect(() => {
     if (session?.user) {
@@ -119,10 +120,7 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
         // l'envoi échouait dès que le web tournait en docker.
         const reponse = await fetch('/api/scanner/documents', {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${(session as any)?.accessToken ?? ''}`,
-            ...(tenantId ? { 'x-tenant-id': tenantId } : {}),
-          },
+          headers: entetes,
           body: formData
         });
 

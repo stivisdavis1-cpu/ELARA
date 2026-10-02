@@ -8,10 +8,8 @@ import { currentTenantId } from "@/lib/ged-api";
  *
  * Deux erreurs ont été corrigées ici :
  *
- * 1. L'en-tête `x-tenant-id` était figé à `test-tenant`. Un compte qui travaille
- *    dans une autre entreprise interrogeait donc les données d'un autre tenant,
- *    et l'API répondait 403. Il faut désormais l'entreprise réellement
- *    sélectionnée.
+ * 1. L'en-tête `x-tenant-id` doit correspondre à l'entreprise réellement
+ *    sélectionnée. Il n'existe aucun tenant par défaut.
  * 2. Le jeton `test-token` était utilisé en repli **sans condition
  *    d'environnement**. Il n'existe que pour le contournement de JwtAuthGuard
  *    en développement : s'en servir en production revient à tenter de passer

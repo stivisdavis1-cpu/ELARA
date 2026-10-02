@@ -4,12 +4,9 @@ import { AuthGuard } from '@nestjs/passport';
 /**
  * Authentification par jeton Keycloak, sans exception.
  *
- * Un ancien contournement acceptait `Authorization: Bearer test-token` et
- * ouvrait une session factice sur l'entreprise de démonstration. Active quel que
- * soit NODE_ENV, il suffisait donc à connaître cette chaîne pour lire les
- * documents, factures et journaux de n'importe quel client. Il est
- * supprimé : un jeton réel est désormais exigé partout, y compris en
- * développement, où il est obtenu par le même échange de mots de passe.
+ * Un ancien contournement d'authentification a été supprimé. Un jeton réel est
+ * désormais exigé partout, y compris en développement (obtenu par échange de
+ * mots de passe standard). Aucun repli n'est autorisé.
  */
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
