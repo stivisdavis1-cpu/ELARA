@@ -150,14 +150,23 @@ CREATE UNIQUE INDEX idx_documents_tenant_hash ON documents(tenant_id, hash_docum
 CREATE TABLE document_chunks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-    page_number INT NOT NULL,
+    -- Nullable à dessein : l'extraction OCR rend un texte continu, sans
+    -- frontière de page fiable. On ne manufacture donc pas un numéro de page
+    -- pour habiller une citation — une page absente est honnête, une page
+    -- inventée est une fausse source. Les documents dont l'OCR est paginé
+    -- renseignent la page.
+    page_number INT,
     content TEXT NOT NULL,
     embedding vector(768)
 );
 
 CREATE INDEX idx_document_chunks_document_id ON document_chunks(document_id);
--- Optional HNSW index for performance
--- CREATE INDEX idx_document_chunks_embedding ON document_chunks USING hnsw (embedding vector_cosine_ops);
+
+-- Index HNSW : sans lui, chaque similarité est un scan séquentiel de tous les
+-- fragments. La recherche vectorielle est l'un des deux bras de la recherche
+-- hybride, elle doit tenir à l'échelle d'un fonds client.
+CREATE INDEX IF NOT EXISTS idx_document_chunks_embedding
+    ON document_chunks USING hnsw (embedding vector_cosine_ops);
 
 -- =====================================================================================
 -- 3. HISTORISATION & AUDIT
@@ -238,29 +247,10 @@ CREATE POLICY tenant_isolation_audit ON audit_trail FOR ALL USING (tenant_id = A
 CREATE POLICY tenant_isolation_historique ON historique_modifications FOR ALL USING (tenant_id = ANY(current_user_tenant_ids()));
 
 -- =====================================================================================
--- 5. DONNÉES DE DÉMONSTRATION (SEED)
+-- 5. AUCUNE DONNEE DE DEMONSTRATION
 -- =====================================================================================
-
-DO $$
-DECLARE
-    demo_tenant_id UUID;
-    demo_user_id UUID;
-BEGIN
-    -- Création d'un locataire
-    INSERT INTO tenants (raison_sociale, secteur, pays, ville) 
-    VALUES ('Boutique Douala SARL', 'Commerce', 'Cameroun', 'Douala') 
-    RETURNING id INTO demo_tenant_id;
-
-    -- Création d'un utilisateur admin
-    INSERT INTO users (tenant_id, nom, email, role) 
-    VALUES (demo_tenant_id, 'Steve Moutouo', 'stivisdavis1@gmail.com', 'admin_compte')
-    RETURNING id INTO demo_user_id;
-
-    -- Liaison user-tenant
-    INSERT INTO user_tenants (user_id, tenant_id, role) 
-    VALUES (demo_user_id, demo_tenant_id, 'admin_compte');
-
-    -- Création de clients
-    INSERT INTO clients (tenant_id, nom, telephone) VALUES (demo_tenant_id, 'Client A', '699000001');
-    INSERT INTO clients (tenant_id, nom, telephone) VALUES (demo_tenant_id, 'Client B', '699000002');
-END $$;
+-- Une base neuve est vide. Les scripts d'initialisation ne creent ni
+-- tenant, ni utilisateur, ni client, ni facture : un tenant est cree par
+-- inscription, et ses premieres donnees viennent de ses propres documents.
+-- Le jeu de demonstration eventuel vit dans infra/db/seed_demo.sql, qui
+-- n'est jamais execute par la creation de la base.

@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, Save } from "lucide-react";
 import { getProfilTenant, type ProfilTenant } from "@/lib/ged-api";
 import { HoteNotifications, useRechargementDonnees } from "@/components/page-actions";
-import { enregistrerOnboardingAction } from "@/lib/actions";
+import { creerEntrepriseAction, enregistrerOnboardingAction, mesOrganisationsAction } from "@/lib/actions";
 
 const SECTEURS = [
   "Services",
@@ -19,7 +19,10 @@ const SECTEURS = [
   "Autre",
 ];
 
-const SYSTEMES_COMPTABLES = ["SYSCOHADA", "OHADA", "PCG", "IFRS", "Autre"];
+// Valeurs réellement acceptées par l'enum PostgreSQL `systeme_comptable`.
+// « OHADA » et « Autre » figuraient ici : l'API les rejetait, et l'enregistrement
+// de l'onboarding échouait avec un 400 sur ce choix.
+const SYSTEMES_COMPTABLES = ["SYSCOHADA", "PCG", "IFRS", "AUTRE"];
 
 /**
  * Deux parcours, parce que la question de départ n'est pas la même selon la
@@ -50,6 +53,10 @@ export default function OnboardingPage() {
   const [r, setR] = useState<Reponses>({});
   const [chargement, setChargement] = useState(true);
   const [enregistrement, setEnregistrement] = useState<string | null>(null);
+  // Un compte sans entreprise ne peut pas atteindre l'onboarding : toutes les
+  // étapes suivantes exigent un tenant. On le vérifie avant tout le reste.
+  const [sansEntreprise, setSansEntreprise] = useState(false);
+  const [creee, setCreee] = useState<string | null>(null);
 
   const definir = (cle: string, valeur: string) => {
     setR((precedent) => ({ ...precedent, [cle]: valeur }));
@@ -59,6 +66,13 @@ export default function OnboardingPage() {
   const load = useCallback(async () => {
     setChargement(true);
     try {
+      const organisations = await mesOrganisationsAction();
+      if (!organisations.length) {
+        setSansEntreprise(true);
+        return;
+      }
+      setSansEntreprise(false);
+
       const profil: ProfilTenant = await getProfilTenant();
       // Les réponses déjà enregistrées servent de valeurs initiales : reprendre
       // un onboarding à moitié fait ne doit pas obliger à ressaisir.
@@ -114,6 +128,104 @@ export default function OnboardingPage() {
     setEnregistrement(action.message);
     if (action.ok) await load();
   };
+
+  const creerEntreprise = async () => {
+    const action = await creerEntrepriseAction(r);
+    setEnregistrement(action.message);
+    if (action.ok) {
+      setCreee(action.message);
+      await load();
+    }
+  };
+
+  /**
+   * Premier écran du parcours : le compte est authentifié mais ne pilote
+   * encore aucune entreprise. On ne peut rien lui proposer d'autre, et surtout
+   * pas l'onboarding, dont l'enregistrement exige déjà un tenant.
+   */
+  if (sansEntreprise && !creee) {
+    return (
+      <motion.section
+        className="view"
+        id="v-onboarding"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
+        <HoteNotifications />
+        <div className="topbar">
+          <div>
+            <div className="eyebrow">
+              <span>Configuration initiale · étape 1</span>
+            </div>
+            <h1 className="page-title">Votre entreprise</h1>
+            <p className="page-sub">
+              Ces informations ouvrent votre espace de travail. Vous pourrez y rattacher
+              d'autres entreprises plus tard avec le même compte.
+            </p>
+          </div>
+        </div>
+
+        <div className="card" style={{ maxWidth: 720 }}>
+          <label className="field">
+            <span>Raison sociale *</span>
+            <input
+              value={r.raison_sociale ?? ""}
+              onChange={(e) => definir("raison_sociale", e.target.value)}
+              placeholder="Nom légal de l'entreprise"
+            />
+          </label>
+          <label className="field">
+            <span>Pays *</span>
+            <input value={r.pays ?? ""} onChange={(e) => definir("pays", e.target.value)} placeholder="Cameroun" />
+          </label>
+          <label className="field">
+            <span>Ville *</span>
+            <input value={r.ville ?? ""} onChange={(e) => definir("ville", e.target.value)} placeholder="Douala" />
+          </label>
+          <label className="field">
+            <span>Secteur d'activité</span>
+            <select value={r.secteur ?? ""} onChange={(e) => definir("secteur", e.target.value)}>
+              <option value="">Non précisé</option>
+              {SECTEURS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Devise</span>
+            <input
+              value={r.devise ?? ""}
+              onChange={(e) => definir("devise", e.target.value.toUpperCase().slice(0, 3))}
+              placeholder="XAF"
+              maxLength={3}
+            />
+          </label>
+          <label className="field">
+            <span>Système comptable</span>
+            <select value={r.systeme_comptable ?? "SYSCOHADA"} onChange={(e) => definir("systeme_comptable", e.target.value)}>
+              <option value="SYSCOHADA">SYSCOHADA</option>
+              <option value="PCG">PCG</option>
+              <option value="IFRS">IFRS</option>
+              <option value="AUTRE">Autre</option>
+            </select>
+          </label>
+
+          {enregistrement && <p className="hint">{enregistrement}</p>}
+
+          <button
+            className="btn btn-primary"
+            onClick={creerEntreprise}
+            disabled={!r.raison_sociale?.trim() || !r.pays?.trim() || !r.ville?.trim() || chargement}
+          >
+            Créer mon entreprise
+          </button>
+        </div>
+      </motion.section>
+    );
+  }
 
   return (
     <motion.section

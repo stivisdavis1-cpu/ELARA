@@ -9,12 +9,14 @@
  * Elles renvoient toutes `ResultatAction` pour que l'interface puisse
  * afficher un retour sans lever d'exception.
  */
+import { cookies } from "next/headers";
 import {
   ResultatAction,
   creerClient,
   creerEmploye,
   creerFournisseur,
   creerIntegration,
+  creerOrganisation,
   creerTemplate,
   creerValidation,
   creerWorkflow,
@@ -28,6 +30,7 @@ import {
   getDocumentsGeneres,
   getEmployes,
   getIntegrations,
+  getMesOrganisations,
   getProfilTenant,
   getTemplatesDocgen,
   getUtilisateurs,
@@ -49,7 +52,9 @@ import {
   supprimerValidation,
   supprimerWorkflow,
   EntreeAudit,
+  Organisation,
 } from "./ged-api";
+import { COOKIE_TENANT } from "./tenant";
 import { ROLES_UTILISATEUR } from "./roles";
 
 // ============================================================
@@ -99,6 +104,88 @@ async function deflater(action: () => Promise<ResultatAction>): Promise<Resultat
     return await action();
   } catch (e) {
     return echec(e);
+  }
+}
+
+// ============================================================
+// ENTREPRISE COURANTE (un compte, plusieurs entreprises)
+// ============================================================
+
+/**
+ * Mémorise l'entreprise sur laquelle l'utilisateur travaille.
+ *
+ * Le choix est validé contre la liste réelle des organisations du compte avant
+ * d'être écrit : le cookie n'est qu'un moyen de navigation, il ne constitue
+ * jamais une autorisation — celle-ci reste vérifiée par l'API à chaque appel.
+ */
+export async function selectionnerEntrepriseAction(tenantId: string): Promise<ResultatAction> {
+  const id = texte(tenantId);
+  if (!id) return { ok: false, message: "Entreprise non renseignée." };
+  return deflater(async () => {
+    const organisations = await getMesOrganisations();
+    if (!organisations.some((o) => o.id === id)) {
+      return { ok: false, message: "Vous n'avez pas accès à cette entreprise." };
+    }
+    (await cookies()).set(COOKIE_TENANT, id, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+    return { ok: true, message: "Entreprise sélectionnée." };
+  });
+}
+
+/**
+ * Crée une entreprise pour le compte connecté.
+ *
+ * Point d'entrée du parcours de démarrage : un compte Keycloak qui n'a encore
+ * aucune entreprise n'a accès à aucune page métier, l'onboarding compris. Il
+ * crée donc d'abord son entreprise, ce qui lui rend l'onboarding accessible.
+ */
+export async function creerEntrepriseAction(d: Record<string, unknown>): Promise<ResultatAction> {
+  const raison_sociale = texte(d.raison_sociale);
+  if (!raison_sociale) return { ok: false, message: "La raison sociale est obligatoire." };
+  return deflater(async () => {
+    const resultat = await creerOrganisation({
+      raison_sociale,
+      secteur: texte(d.secteur) || undefined,
+      pays: texte(d.pays) || undefined,
+      ville: texte(d.ville) || undefined,
+      devise: (texte(d.devise) || undefined)?.toUpperCase(),
+      systeme_comptable: texte(d.systeme_comptable) || "SYSCOHADA",
+      nom: texte(d.nom) || undefined,
+      email: texte(d.email) || undefined,
+    });
+    (await cookies()).set(COOKIE_TENANT, resultat.organisation.id, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
+    return { ok: true, message: "Entreprise créée." };
+  });
+}
+
+/** Entreprises accessibles au compte connecté, pour le sélecteur de la Sidebar. */
+export async function mesOrganisationsAction(): Promise<Organisation[]> {
+  const { organisations } = await mesOrganisationsResultat();
+  return organisations;
+}
+
+/**
+ * Même lecture, mais en distinguant « aucune entreprise » d'une panne : une
+ * liste vide renvoyée sur erreur ferait croire à un compte sans société et
+ * pousserait vers l'écran de création alors que l'appel a simplement échoué.
+ */
+export async function mesOrganisationsResultat(): Promise<{
+  organisations: Organisation[];
+  erreur: string | null;
+}> {
+  try {
+    return { organisations: await getMesOrganisations(), erreur: null };
+  } catch (e) {
+    return { organisations: [], erreur: e instanceof Error ? e.message : String(e) };
   }
 }
 

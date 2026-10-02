@@ -35,16 +35,21 @@ export class CfoService {
 
   async getBFR(tenantId: string) {
     // BFR = Créances clients + Stocks - Dettes fournisseurs
-    
-    // Créances Clients (Factures non payées)
+
+    // Une pièce extraite par IA crée la facture en « brouillon » tant qu'elle
+    // n'a pas été validée. Compter un brouillon revient à annoncer un chiffre
+    // à l'utilisateur alors que personne ne l'a approuvé : un brouillon non
+    // pertinent gonfle les créances, un brouillon fantôme les gonfle aussi.
+    // Seules les factures émises sont donc retenues — le même filtre que la
+    // balance âgée, pour que les deux écrans ne se contredisent pas.
     const facturesClient = await this.prisma.facture.aggregate({
-      where: { tenant_id: tenantId, client_id: { not: null }, statut: { not: 'payee' } },
+      where: { tenant_id: tenantId, client_id: { not: null }, statut: { in: ['envoyee', 'impayee'] } },
       _sum: { montant_total: true }
     });
 
     // Dettes fournisseurs (Factures fournisseurs non payées)
     const facturesFournisseur = await this.prisma.facture.aggregate({
-      where: { tenant_id: tenantId, fournisseur_id: { not: null }, statut: { not: 'payee' } },
+      where: { tenant_id: tenantId, fournisseur_id: { not: null }, statut: { in: ['envoyee', 'impayee'] } },
       _sum: { montant_total: true }
     });
 

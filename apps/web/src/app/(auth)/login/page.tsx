@@ -1,65 +1,37 @@
-'use client'
+import FormulaireConnexion from './formulaire-connexion'
 
-import React, { useState } from 'react'
-import { login } from './actions'
+/** Traduit les codes d'erreur que NextAuth renvoie dans l'URL. */
+const messages: Record<string, string> = {
+  CredentialsSignin: 'Identifiants invalides.',
+  Configuration: "La connexion est mal configurée sur le serveur.",
+  AccessDenied: "Accès refusé.",
+  SessionRequired: 'Connectez-vous pour continuer.',
+  OAuthAccountNotLinked: 'Ce compte est lié à un autre moyen de connexion.',
+}
 
-export default function LoginPage() {
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+/**
+ * Le paramètre `?inscrit=1` est lu ici, côté serveur, et non dans le
+ * formulaire.
+ *
+ * Lire l'URL depuis un composant client impose de le placer derrière une
+ * frontière `Suspense` : le HTML initial ne contenait alors que le cadre vide
+ * et le formulaire n'apparaissait qu'après le chargement du JavaScript, ce qui
+ * donne l'impression d'une page cassée. En le résolvant ici, l'écran de
+ * connexion est envoyé complet, comme avant.
+ *
+ * `?error=` est lu pour la même raison : selon la version, NextAuth signale un
+ * refus d'identifiants soit par exception, soit par redirection. Dans ce
+ * dernier cas, rien ne pouvait être affiché et la connexion semblait
+ * silencieusement sans effet.
+ */
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
+  const params = await searchParams
+  const code = typeof params.error === 'string' ? params.error : undefined
+  const erreur = code ? messages[code] ?? 'Connexion impossible, réessayez.' : undefined
 
-  async function handleSubmit(formData: FormData) {
-    setLoading(true)
-    setError(null)
-    const res = await login(formData)
-    if (res?.error) {
-      setError(res.error)
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: 'var(--paper)' }}>
-      <div className="card" style={{ width: '100%', maxWidth: '400px', padding: '40px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
-          <svg width="40" height="40" viewBox="0 0 30 26" style={{ margin: '0 auto 16px' }}>
-            <path d="M0 13 L6 13 L8.5 3 L12 23 L15.5 8 L18.5 18 L21 13 L30 13" fill="none" stroke="#A9761F" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <h1 className="section-title" style={{ fontSize: '24px' }}>Connexion à Elara</h1>
-          <p className="section-sub">Authentification sécurisée</p>
-        </div>
-
-        <form action={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {error && <div style={{ color: 'red', fontSize: '14px', textAlign: 'center', background: '#ffebee', padding: '10px', borderRadius: '8px' }}>{error}</div>}
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label htmlFor="email" style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-main)' }}>Email</label>
-            <input 
-              type="email" 
-              id="email" 
-              name="email" 
-              placeholder="admin-pro@elara.test" 
-              required 
-              style={{ padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', transition: 'all 0.2s' }} 
-            />
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <label htmlFor="password" style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-main)' }}>Mot de passe</label>
-            <input 
-              type="password" 
-              id="password" 
-              name="password" 
-              placeholder="••••••••" 
-              required 
-              style={{ padding: '12px 16px', borderRadius: '12px', border: '1px solid #e2e8f0', outline: 'none', transition: 'all 0.2s' }} 
-            />
-          </div>
-
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: '10px', opacity: loading ? 0.7 : 1 }} disabled={loading}>
-            {loading ? 'Connexion...' : 'Accéder à mon espace'}
-          </button>
-        </form>
-      </div>
-    </div>
-  )
+  return <FormulaireConnexion inscrit={params.inscrit === '1'} erreurInitiale={erreur} />
 }

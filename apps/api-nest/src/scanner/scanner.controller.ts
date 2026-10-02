@@ -22,39 +22,11 @@ function docxToPdfScript(): string {
   return local;
 }
 
-/**
- * Vérifie que le Bearer JWT (Keycloak) porte bien un rôle admin/administrateur.
- * Le guard JWT étant contourné hors production, la vérification est faite ici
- * sur le jeton brut — indépendant du bypass.
- */
-function requireAdmin(req: any): boolean {
-  const header: string = req?.headers?.authorization || '';
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
-  if (!token) return false;
-  try {
-    const parts = token.split('.');
-    if (parts.length < 2) return false;
-    let json: string;
-    try {
-      json = Buffer.from(parts[1], 'base64url').toString('utf-8');
-    } catch {
-      json = Buffer.from(parts[1], 'base64').toString('utf-8');
-    }
-    const payload = JSON.parse(json);
-    const roles: string[] = [
-      ...((payload?.realm_access?.roles as string[]) || []),
-      ...((payload?.resource_access?.['elara-web']?.roles as string[]) || []),
-      ...((payload?.resource_access?.['account']?.roles as string[]) || []),
-    ];
-    return roles.includes('admin') || roles.includes('administrateur');
-  } catch {
-    return false;
-  }
-}
-
-@ApiTags('Scanner')
-@ApiBearerAuth()
-@Controller('v1/scanner')
+  @ApiTags('Scanner')
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(TenantInterceptor, AuditInterceptor)
+  @Controller('v1/scanner')
 export class ScannerController {
   constructor(
     private readonly scannerService: ScannerService,
@@ -64,7 +36,6 @@ export class ScannerController {
   ) {}
 
   @Post('documents')
-  // @UseGuards(JwtAuthGuard)
   @UseInterceptors(FileInterceptor('file', {
     storage: diskStorage({
       destination: './tmp',
@@ -109,8 +80,23 @@ export class ScannerController {
        }
     }
 
-    const tenantId = req.user?.tenantId || 'test-tenant'; // injecté par JwtAuthGuard
+    const tenantId = this.tenant(req);
     return this.scannerService.processNewDocument(tenantId, file);
+  }
+
+  /**
+   * Entreprise courante, telle que résolue par le JwtAuthGuard et le
+   * TenantInterceptor.
+   *
+   * Aucun repli n'est appliqué ici. Revenir à une entreprise de démonstration
+   * lorsqu'aucune n'est établie ouvrirait les documents, factures et archives
+   * d'un autre client à un compte qui n'a pas Demonstré son accès : mieux vaut
+   * refuser la requête.
+   */
+  private tenant(req: any): string {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) throw new UnauthorizedException("Aucune entreprise selectionnee pour cette session.");
+    return tenantId;
   }
 
   @Post('documents-async')
@@ -126,7 +112,7 @@ export class ScannerController {
   @ApiOperation({ summary: 'Importer un nouveau document pour extraction IA (Asynchrone via RabbitMQ)' })
   @ApiConsumes('multipart/form-data')
   async uploadDocumentAsync(@UploadedFile() file: any, @Req() req: any) {
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     const documentId = `doc-${Date.now()}`;
     const fileUrl = file.path; // In a real scenario, this would be a MinIO URL
 
@@ -143,8 +129,7 @@ export class ScannerController {
   }
 
   @Post('documents/bulk')
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(TenantInterceptor, AuditInterceptor, FilesInterceptor('files', 1000, {
+  @UseInterceptors(FilesInterceptor('files', 1000, {
     storage: diskStorage({
       destination: './tmp',
       filename: (req, file, cb) => {
@@ -208,14 +193,14 @@ export class ScannerController {
   @Get('documents')
   @ApiOperation({ summary: 'Lister les documents récents du tenant (source de vérité BDD + archives)' })
   async listDocuments(@Req() req: any) {
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     return this.scannerService.listDocuments(tenantId);
   }
 
   @Get('documents/:id/file')
   @ApiOperation({ summary: 'Streaming du fichier d\'un document (fichier de travail ou copie d\'archive diskgroup). ?as=base64 renvoie un JSON sûr (aucun application/pdf) pour l\'aperçu navigateur.' })
   async getDocumentFile(@Param('id') id: string, @Req() req: any, @Res({ passthrough: true }) res: any) {
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     const { buffer, type_document } = await this.scannerService.downloadDocumentFile(tenantId, id);
     if (req.query.as === 'base64') {
       res.set({
@@ -296,7 +281,7 @@ export class ScannerController {
   @ApiOperation({ summary: 'Recherche plein texte et sémantique dans les documents lourds' })
   async searchDocument(@Req() req: any) {
     const q = req.query.q as string;
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     
     if (!q) {
       return { message: 'Veuillez fournir un paramètre de recherche q', results: [] };
@@ -311,31 +296,24 @@ export class ScannerController {
         mode: resultat.mode,
         suffisant: resultat.suffisant,
         avertissements: resultat.avertissements,
+        // `passages` est le nom canonique : c'est celui du service et celui que
+        // lisent les écrans Documents et Scanner. `results` est conservé en
+        // alias — l'interface affichait une liste vide parce qu'elle attendait
+        // `passages` alors que la réponse ne fournissait que `results`.
+        passages: resultat.passages,
         results: resultat.passages,
       };
     } catch (error: any) {
       return {
         error: 'Erreur lors de la recherche',
         details: error.message,
+        passages: [],
         results: [],
       };
     }
   }
 
-  // Écouteur RabbitMQ pour le retour de FastAPI (IA)
-  @EventPattern('scanner.document.traite')
-  async handleDocumentProcessed(@Payload() data: any) {
-    await this.scannerService.handleDocumentProcessed(data);
-  }
-
-  @EventPattern('scanner.document.progress')
-  async handleDocumentProgress(@Payload() data: any) {
-    this.scannerService.handleDocumentProgress(data.tenant_id, data.document_id, data.progress, data.message);
-  }
-
   @Get('archives/:id/download')
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(TenantInterceptor, AuditInterceptor)
   @ApiOperation({ summary: 'Télécharger/consulter une archive GED par ID' })
   async downloadArchive(@Req() req: any, @Param('id') id: string) {
     const tenantId = req.user.tenantId;
@@ -345,7 +323,7 @@ export class ScannerController {
   @Get('archives')
   @ApiOperation({ summary: 'Index logique des documents archivés (stockage en mémoire + BDD)' })
   async listArchives(@Req() req: any) {
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     return this.scannerService.getArchiveRecords(tenantId);
   }
 
@@ -353,13 +331,11 @@ export class ScannerController {
   @ApiOperation({ summary: 'Valider & archiver un document : copie dans le diskgroup sécurisé + index logique' })
   @ApiBearerAuth()
   async archiveDocument(@Param('id') id: string, @Req() req: any) {
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     return this.scannerService.archiveDocument(tenantId, id);
   }
 
   @Get('archives/:id/raw')
-  @UseGuards(JwtAuthGuard)
-  @UseInterceptors(TenantInterceptor, AuditInterceptor)
   @ApiOperation({ summary: 'Streaming du fichier brut d\'une archive GED par ID' })
   async downloadArchiveRaw(@Req() req: any, @Param('id') id: string, @Res({ passthrough: true }) res: any) {
     const tenantId = req.user.tenantId;
@@ -372,11 +348,18 @@ export class ScannerController {
     return new StreamableFile(buffer);
   }
 
+  @Post('documents/:id/reject')
+  @ApiOperation({ summary: 'Rejeter un document en attente de validation' })
+  @ApiBearerAuth()
+  async rejectDocument(@Param('id') id: string, @Body() body: any, @Req() req: any) {
+    return this.scannerService.rejectDocument(this.tenant(req), id, body?.motif);
+  }
+
   @Patch('documents/:id')
   @ApiOperation({ summary: 'Mettre à jour les champs extraits d\'un document (figé après archivage)' })
   @ApiBearerAuth()
   async updateDocumentFields(@Param('id') id: string, @Body() body: any, @Req() req: any) {
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     const extractedData = body?.extractedData ?? body ?? {};
     if (typeof extractedData !== 'object' || Array.isArray(extractedData)) {
       throw new BadRequestException('extractedData doit être un objet clé/valeur.');
@@ -480,14 +463,10 @@ export class ScannerController {
     });
   }
 
-  private tenant(req: any): string {
-    return req.user?.tenantId || 'test-tenant';
-  }
-
   @Get('documents/:id/export')
   @ApiOperation({ summary: 'Exporter un document vers PDF, Word (docx) ou Image (png) — conversion côté serveur' })
   async exportDocument(@Param('id') id: string, @Req() req: any, @Query('format') format?: string) {
-    const tenantId = req.user?.tenantId || 'test-tenant';
+    const tenantId = this.tenant(req);
     const wanted = (format || 'pdf').toLowerCase();
     if (!['pdf', 'docx', 'png'].includes(wanted)) {
       throw new BadRequestException('format doit être pdf | docx | png');

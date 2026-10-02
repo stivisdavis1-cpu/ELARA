@@ -1,5 +1,14 @@
-version: '3.8'
 services:
+  # ============================================================
+  # Services d'infrastructure
+  #
+  # Tous portent `restart: unless-stopped` : le 2026-10-02, une excursion du
+  # moteur Docker a laissé les cinq services dans l'état `Exited (255)` alors
+  # que les trois services applicatifs, eux, redémarraient tout seuls. Résultat
+  # : Keycloak injoignable, donc validation JWKS impossible, donc API en
+  # `unhealthy` et application hors service. Un `Exited` silencieux sur un
+  # service d'infrastructure ne se répare pas tout seul.
+  # ============================================================
   postgres:
     image: ankane/pgvector:latest
     environment:
@@ -10,6 +19,13 @@ services:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elara -d elara"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
 
   redis:
     image: redis:alpine
@@ -18,6 +34,13 @@ services:
     volumes:
       - redis_data:/data
     command: redis-server --save 60 1 --loglevel warning
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -26,6 +49,15 @@ services:
       - "15672:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      # `rabbitmq-diagnostics` teste le protocole AMQP réel, pas seulement le
+      # processus : c'est ce qui garantit qu'une publication du scanner aboutit.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 45s
+    restart: unless-stopped
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest
@@ -37,6 +69,20 @@ services:
       - "8080:8080"
     volumes:
       - keycloak_data:/opt/keycloak/data
+    healthcheck:
+      # Le realm Elara et non la racine : `/` répond avant que le realm ne soit
+      # importé, et une API démarrée trop tôt ne récupère jamais ses clés RSA.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/8080 &&
+          printf 'GET /realms/Elara/.well-known/openid-configuration HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"issuer"' <&3
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
 
   minio:
     image: quay.io/minio/minio
@@ -49,6 +95,13 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
 
   # ============================================================
   # Services applicatifs ELARA (Images multi-stage, non-root)
@@ -71,7 +124,10 @@ services:
     volumes:
       - elara_documents:/data/documents
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     restart: unless-stopped
 
   api-nest:
@@ -84,6 +140,19 @@ services:
       API_AI_INTERNAL_URL: http://api-ai:8000
       OCR_SCRIPTS_DIR: /app/scripts
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      # Provisionnement des comptes : l'API crée l'identité Keycloak à
+      # l'invitation. Le couple admin est celui du Keycloak de développement ;
+      # en production, le remplacer par un compte de service
+      # (KEYCLOAK_ADMIN_CLIENT_ID / KEYCLOAK_ADMIN_CLIENT_SECRET).
+      KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_REALM: Elara
+      KEYCLOAK_ADMIN_USERNAME: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      # Origine publique du site, utilisée pour composer les liens d'activation
+      # remis à l'administrateur. À pointer sur le domaine réellement servi :
+      # la valeur par défaut produit un lien `localhost`, ouvert sur la machine
+      # de l'administrateur et non sur le site.
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
       # Stockage filesystem : DOCUMENTS_DIR pointe vers la racine du volume partagé
       # (les fichiers historiques y ont été écrits), le diskgroup d'archives sécurisé
       # est un sous-dossier dédié (/data/archives). La BDD ne contient que de la métadonnée.
@@ -102,10 +171,16 @@ services:
       # (ARCHIVE_DIR=/data/archives) sont deux sous-dossiers distincts de ce volume.
       - elara_documents:/data
     depends_on:
-      - postgres
-      - redis
-      - rabbitmq
-      - api-ai
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      api-ai:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
@@ -128,7 +203,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - api-nest
+      api-nest:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

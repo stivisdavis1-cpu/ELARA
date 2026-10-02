@@ -6,6 +6,7 @@ import DocumentViewer from "../../../components/DocumentViewer";
 import DocumentElements from "../../../components/DocumentElements";
 import { FileText, X, AlertTriangle, Menu, Crop, Landmark, Building2, ShieldCheck, ScrollText, CalendarDays, Tags, Scale } from "lucide-react";
 import { useSession } from "next-auth/react";
+import { useEntrepriseCourante, useEntetesApi } from "@/components/TenantContext";
 import { io, Socket } from "socket.io-client";
 import { fetchFileBytes, rectImageContenue } from "../../../lib/fileFetch";
 import { socketScanner } from "@/lib/api-url";
@@ -21,9 +22,12 @@ interface ScannedDocument {
   amount?: string;
   supplier?: string;
   alert?: boolean;
-  extractedData?: Record<string, string>;
-  ocrText?: string;
-  localFileUrl?: string;
+  risque?: number;
+      extractedData?: Record<string, string>;
+      ocrText?: string;
+      /** Échec d'analyse ou d'envoi : le document n'a pas été lu. */
+      erreur?: string;
+      localFileUrl?: string;
   mimeType?: string;
   progress?: number;
   progressMessage?: string;
@@ -173,7 +177,7 @@ export default function ScannerPage() {
     if (!q) { setPassages(null); setModeRecherche(''); return; }
     setRechercheEnCours(true);
     try {
-      const res = await fetch('/api/scanner/search?q=' + encodeURIComponent(q));
+      const res = await fetch('/api/scanner/search?q=' + encodeURIComponent(q), { headers: entetes });
       const corps = await res.json().catch(() => null);
       const data = corps?.data ?? corps;
       setModeRecherche(data?.mode ?? 'texte');
@@ -194,6 +198,10 @@ export default function ScannerPage() {
   // La liste démarre vide : seules les données réelles (uploads persistés en BDD
   // + archives GED) apparaissent, restaurées depuis le backend au chargement.
   const [documents, setDocuments] = useState<ScannedDocument[]>([]);
+  /** Décision en cours (archivage, rejet) : évite les doubles clics. */
+  const [enregistrement, setEnregistrement] = useState(false);
+  /** Historique non chargeable : affiché plutôt que silencieusement masqué. */
+  const [erreurChargement, setErreurChargement] = useState<string | null>(null);
   const documentsRef = useRef<ScannedDocument[]>([]);
   const enCoursRef = useRef(false);
   useEffect(() => { documentsRef.current = documents; }, [documents]);
@@ -205,11 +213,18 @@ export default function ScannerPage() {
   }, []);
   const socketRef = useRef<Socket | null>(null);
 
-  // En-tête tenant : le proxy Next ne l'ajoute pas, et sans lui Nest
-  // cherche le document chez « test-tenant » et répond 404. C'est ce qui
-  // faisait échouer l'OCR localisé sur un document rouvert depuis l'historique.
-  const tenantId = (session?.user as { tenantId?: string } | undefined)?.tenantId || 'test-tenant';
-  const entetesApi = useMemo(() => ({ 'x-tenant-id': tenantId }), [tenantId]);
+  // En-tête tenant : le proxy Next ne l'ajoute pas, et sans lui Nest cherche
+  // le document dans une organisation qui n'existe pas et répond 404. C'est ce
+  // qui faisait échouer l'OCR localisé sur un document rouvert depuis
+  // l'historique. L'identifiant vient du layout, qui l'a lu sur le cookie
+  // côté serveur : sans entreprise choisie, aucun appel n'est possible.
+  const tenantId = useEntrepriseCourante();
+  // Le proxy Next ne relaie que l'URL : le jeton et l'entreprise doivent être
+  // transmis explicitement, sans quoi l'API répond 401 et l'écran reste vide
+  // en silence. Le tenant n'est jamais deviné.
+  const entetes = useEntetesApi();
+  /** La session arrive après le premier rendu : les effets attendent le jeton. */
+  const jeton = (session as { accessToken?: string } | null)?.accessToken ?? '';
 
   useEffect(() => {
     if (session?.user) {
@@ -265,6 +280,9 @@ export default function ScannerPage() {
   // après un rafraîchissement de la page — plus rien ne « part ».
   useEffect(() => {
     let cancelled = false;
+    // Tant que la session ou l'entreprise ne sont pas connues, aucun appel :
+    // la requête partait avec un jeton vide et l'historique restait vide.
+    if (!jeton || !tenantId) return;
     (async () => {
       // Deux 'focus' rapprochés déclenchent deux rechargements concurrents.
       // Les deux lisaient le même `documentsRef` périmé et concaténaient
@@ -274,8 +292,15 @@ export default function ScannerPage() {
       if (enCoursRef.current) return;
       enCoursRef.current = true;
       try {
-        const res = await fetch('/api/scanner/documents');
-        if (!res.ok) return;
+        const res = await fetch('/api/scanner/documents', { headers: entetes });
+        if (!res.ok) {
+          // Un échec de lecture doit se voir : sinon l'écran montre un
+          // historique vide, indistinguishable d'un tenant sans document.
+          if (!cancelled) setErreurChargement(`Historique inaccessible (HTTP ${res.status}).`);
+          return;
+        }
+        if (cancelled) return;
+        if (entetes['x-tenant-id']) setErreurChargement(null);
         const payload = await res.json();
         const items = Array.isArray(payload?.data) ? payload.data : [];
         if (cancelled || items.length === 0) return;
@@ -289,6 +314,7 @@ export default function ScannerPage() {
                 : (it.niveau_risque >= 7 ? 'rgba(220,38,38,0.12)' : 'rgba(20,184,166,0.1)'),
               type: it.type_libelle || it.type || undefined,
               alert: (it.niveau_risque ?? 0) >= 7,
+              risque: it.niveau_risque ?? 0,
               mimeType: mimeFromName(it.fichier || it.nom) as any,
               localFileUrl: `/api/scanner/file/${encodeURIComponent(it.document_id)}?as=base64`,
               extractedData: (() => {
@@ -325,7 +351,7 @@ export default function ScannerPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, jeton, tenantId, entetes]);
 
 // Aperçu des documents Word (.docx/.doc), PowerPoint (.pptx), RTF, texte & CSV
   // rendus directement dans le navigateur via le composant partagé DocumentViewer
@@ -364,7 +390,7 @@ export default function ScannerPage() {
     }));
 
     try {
-      const { buffer, mime } = await fetchFileBytes(doc.localFileUrl, entetesApi);
+      const { buffer, mime } = await fetchFileBytes(doc.localFileUrl, entetes);
       const fileBlob = new Blob([buffer], { type: mime });
       const formData = new FormData();
       formData.append('file', fileBlob, doc.name);
@@ -393,6 +419,7 @@ export default function ScannerPage() {
 
       const response = await fetch('/api/scanner/documents/crop-ocr', {
         method: 'POST',
+        headers: entetes,
         body: formData
       });
 
@@ -411,11 +438,13 @@ export default function ScannerPage() {
 
         // Un champ ajouté à la main doit survivre au rechargement : sans
         // écriture en base il disparaissait à la navigation suivante, et la
-        // zone recadrée n'était pas mémorisée.
+        // zone recadrée n'était pas mémorisée. Une ligne d'échec n'existe pas
+        // côté serveur : l'y écrire répondait 400 sans raison apparente.
+        if (doc.erreur) return;
         try {
           await fetch(`/api/scanner/documents/${encodeURIComponent(docId)}/elements`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...entetesApi },
+            headers: { 'Content-Type': 'application/json', ...entetes },
             body: JSON.stringify({
               nature: 'texte',
               label: fieldName,
@@ -455,13 +484,14 @@ export default function ScannerPage() {
   const handleToggleDrawingMode = async () => {
     if (!isDrawingMode && activeDoc?.localFileUrl) {
       try {
-        const { buffer, mime } = await fetchFileBytes(activeDoc.localFileUrl, entetesApi);
+        const { buffer, mime } = await fetchFileBytes(activeDoc.localFileUrl, entetes);
         const fileBlob = new Blob([buffer], { type: mime });
         const formData = new FormData();
         formData.append('file', fileBlob, activeDoc.name);
 
         const response = await fetch('/api/scanner/documents/preview', {
           method: 'POST',
+          headers: entetes,
           body: formData
         });
         if (response.ok) {
@@ -659,7 +689,12 @@ export default function ScannerPage() {
           <div className="card">
             <div className="kpi-label" style={{ marginBottom: '16px' }}>Historique récent</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {documents.length === 0 && (
+              {erreurChargement && (
+                <div style={{ padding: '12px', borderRadius: '8px', background: 'rgba(162, 59, 59, 0.06)', border: '1px solid rgba(162, 59, 59, 0.2)', color: 'var(--red)', fontSize: '12px' }}>
+                  {erreurChargement} Les documents de cette organisation n&apos;ont pas pu être lus — ce n&apos;est pas un historique vide.
+                </div>
+              )}
+              {documents.length === 0 && !erreurChargement && (
                 <div style={{ textAlign: 'center', padding: '48px 16px', color: 'var(--text-dim)' }}>
                   <FileText className="w-8 h-8 mx-auto mb-3" style={{ opacity: 0.4 }} />
                   <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)' }}>Aucune donnée enregistrée</div>
@@ -837,7 +872,11 @@ export default function ScannerPage() {
                     <div style={{ marginTop: 'auto', background: '#F8FAFC', padding: '16px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                       <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: '8px' }}>Texte Brut (Extraction OCR)</div>
                       <pre style={{ fontSize: '11px', color: 'var(--text-dim)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', maxHeight: '100px', overflowY: 'auto' }}>
-                        {activeDoc?.ocrText === "" ? "(Document purement scanné - Aucun texte brut détecté. Utilisez l'extraction zonale sur l'image ci-contre.)" : (activeDoc?.ocrText || "Analyse OCR en cours...")}
+                        {activeDoc?.erreur
+                          ? "Aucun texte extrait : le document n'a pas pu être lu."
+                          : activeDoc?.ocrText === ""
+                            ? "(Document purement scanné - Aucun texte brut détecté. Utilisez l'extraction zonale sur l'image ci-contre.)"
+                            : (activeDoc?.ocrText || "Analyse OCR en cours...")}
                       </pre>
                     </div>
                   </div>
@@ -848,15 +887,36 @@ export default function ScannerPage() {
             <div className="viewer-data">
               <div style={{ marginBottom: '24px' }}>
                 <div className="eyebrow">Extraction Algorithmique</div>
-                <h3 style={{ fontSize: '16px', fontWeight: 600 }}>Données structurées ({activeDoc?.type})</h3>
+                <h3 style={{ fontSize: '16px', fontWeight: 600 }}>
+                  Données structurées {activeDoc?.type ? `(${activeDoc.type})` : ''}
+                </h3>
               </div>
 
-              {activeDoc?.alert && (
+              {/* Échec d'analyse : on ne conclut rien sur un document illisible. */}
+              {activeDoc?.erreur && (
+                <div style={{ background: 'rgba(162, 59, 59, 0.05)', border: '1px solid rgba(162, 59, 59, 0.2)', padding: '12px', borderRadius: '8px', marginBottom: '16px', display: 'flex', gap: '8px' }}>
+                  <AlertTriangle className="w-4 h-4" style={{ color: 'var(--red)', flexShrink: 0 }} />
+                  <div style={{ fontSize: '12px', color: 'var(--red)' }}>
+                    <strong>Analyse impossible</strong><br/>
+                    {activeDoc.erreur}<br/>
+                    <span style={{ color: 'var(--text-dim)' }}>
+                      Aucune donnée n&apos;a pu être extraite. Ce document n&apos;est pas archivé : relancez l&apos;analyse après avoir vérifié le fichier.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {activeDoc?.alert && !activeDoc?.erreur && (
                 <div style={{ background: 'rgba(162, 59, 59, 0.05)', border: '1px solid rgba(162, 59, 59, 0.2)', padding: '12px', borderRadius: '8px', marginBottom: '16px', display: 'flex', gap: '8px' }}>
                   <AlertTriangle className="w-4 h-4" style={{ color: 'var(--red)', flexShrink: 0 }} />
                   <div style={{ fontSize: '12px', color: 'var(--red)' }}>
                     <strong>Alerte détectée</strong><br/>
-                    Le contenu OCR présente des anomalies. Fraude ou non-conformité potentielle (Score 8/10).
+                    {/* On n'accuse une anomalie que si le document a réellement
+                        été lu, et l'on affiche le risque calculé : un score
+                        figé inventait une alerte sur des pages illisibles. */}
+                    {activeDoc.ocrText
+                      ? <>Le contenu analysé présente des anomalies. Fraude ou non-conformité potentielle{typeof activeDoc.risque === 'number' ? ` (Score ${activeDoc.risque}/10)` : ''}.</>
+                      : <>Analyse impossible : le document n'a pas pu être lu, aucune conclusion sur son contenu n'est possible. Le score de risque n'est pas établi.</>}
                   </div>
                 </div>
               )}
@@ -866,7 +926,11 @@ export default function ScannerPage() {
                 <div style={{ background: '#F8FAFC', padding: '12px', borderRadius: '8px', border: '1px solid #E2E8F0', marginBottom: '16px' }}>
                   <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: '8px' }}>Texte Brut (Extraction OCR)</div>
                   <pre style={{ fontSize: '11px', color: 'var(--text-dim)', whiteSpace: 'pre-wrap', fontFamily: 'monospace', maxHeight: '150px', overflowY: 'auto' }}>
-                    {activeDoc?.ocrText === "" ? "(Document purement scanné - Aucun texte brut détecté. Utilisez l'extraction zonale sur l'image ci-contre.)" : (activeDoc?.ocrText || "Analyse OCR en cours...")}
+                    {activeDoc?.erreur
+                      ? "Aucun texte extrait : le document n'a pas pu être lu."
+                      : activeDoc?.ocrText === ""
+                        ? "(Document purement scanné - Aucun texte brut détecté. Utilisez l'extraction zonale sur l'image ci-contre.)"
+                        : (activeDoc?.ocrText || "Analyse OCR en cours...")}
                   </pre>
                 </div>
               )}
@@ -1053,21 +1117,46 @@ export default function ScannerPage() {
                   <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, background: 'rgba(20, 184, 166, 0.1)', color: '#0F766E', fontSize: 12, fontWeight: 600 }}>
                     <ShieldCheck className="w-4 h-4" /> Déjà archivé &amp; intégré — consultation seule
                   </div>
+                ) : activeDoc?.erreur ? (
+                  // Rien à valider ni à rejeter : le document n'existe pas en
+                  // base. L'afficher quand même proposait un archivage vers un
+                  // identifiant local, qui échouait toujours en 404.
+                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, background: 'rgba(162, 59, 59, 0.08)', color: 'var(--red)', fontSize: 12, fontWeight: 600 }}>
+                    <AlertTriangle className="w-4 h-4" /> Document non enregistré — relancez l&apos;analyse
+                  </div>
                 ) : (
                 <>
-                <button 
-                  className="btn btn-secondary" 
+                <button
+                  className="btn btn-secondary"
                   style={{ flex: 1, justifyContent: 'center' }}
-                  onClick={() => {
-                    setDocuments(prev => prev.map(d => d.id === activeDoc?.id ? { ...d, status: 'Rejeté', statusColor: 'var(--red)', statusBg: 'rgba(162, 59, 59, 0.1)', alert: false } : d));
-                    setSelectedDoc(null);
+                  disabled={enregistrement}
+                  onClick={async () => {
+                    // Le rejet est écrit en base : sans cet appel, le statut
+                    // disparaissait au rechargement et le document redevenait
+                    // « en attente de validation ».
+                    setEnregistrement(true);
+                    try {
+                      const res = await fetch(`/api/scanner/documents/${encodeURIComponent(activeDoc?.id || '')}/reject`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...entetes },
+                        body: JSON.stringify({})
+                      });
+                      const data = await res.json().catch(() => null);
+                      if (!res.ok) throw new Error(data?.error?.message || data?.error || `Erreur HTTP ${res.status}`);
+                      setDocuments(prev => prev.map(d => d.id === activeDoc?.id ? { ...d, status: 'Rejeté', statusColor: 'var(--red)', statusBg: 'rgba(162, 59, 59, 0.1)', alert: false } : d));
+                      setSelectedDoc(null);
+                    } catch (e: any) {
+                      alert(`Rejet impossible : ${e.message}`);
+                    }
+                    setEnregistrement(false);
                   }}
                 >
                   Rejeter
                 </button>
-                <button 
-                  className="btn btn-primary teal" 
+                <button
+                  className="btn btn-primary teal"
                   style={{ flex: 1, justifyContent: 'center' }}
+                  disabled={enregistrement}
                   onClick={async () => {
                     // Enregistrement distinct : remplace le terme générique par le type entre parenthèses
                     const genericTypes = new Set(['Inconnu', 'Document', 'Document Inconnu', 'Erreur', 'Traitement Lourd']);
@@ -1082,6 +1171,7 @@ export default function ScannerPage() {
                       suffix += 1;
                     }
 
+                    setEnregistrement(true);
                     setDocuments(prev => prev.map(d => d.id === activeDoc?.id ? {
                       ...d,
                       name: title,
@@ -1092,7 +1182,7 @@ export default function ScannerPage() {
                     } : d));
 
                     try {
-                      const res = await fetch(`/api/scanner/documents/${encodeURIComponent(activeDoc?.id || '')}/archive`, { method: 'POST' });
+                      const res = await fetch(`/api/scanner/documents/${encodeURIComponent(activeDoc?.id || '')}/archive`, { method: 'POST', headers: entetes });
                       const data = await res.json().catch(() => null);
                       if (!res.ok) throw new Error((data && data.message) || `Erreur HTTP ${res.status}`);
                       setDocuments(prev => prev.map(d => d.id === activeDoc?.id ? {
@@ -1120,10 +1210,11 @@ export default function ScannerPage() {
                       } : d));
                       alert(`Erreur d'archivage : ${e.message}`);
                     }
+                    setEnregistrement(false);
                     setSelectedDoc(null);
                   }}
                 >
-                  Valider & Archiver
+                  Valider &amp; Archiver
                 </button>
                 </>
                 )}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { FileText, Download, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { PDFDocumentProxy, PDFDocumentLoadingTask } from "pdfjs-dist";
 import { fetchFileBytes, rawFileUrl } from "@/lib/fileFetch";
+import { useEntetesApi } from "@/components/TenantContext";
 
 // Chargé dynamiquement dans l'effet (jamais évalué au build/prérendu : pdf.js v6
 // requiert `Iterator`, absent de Node 20 utilisé dans l'image Docker).
@@ -104,6 +105,10 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
     try { task?.destroy(); } catch { /* ignore */ }
   }, []);
 
+  // Le fichier vient de l'API : sans jeton ni entreprise, la réponse est 401 et
+  // l'aperçu affiche « type non reconnu » au lieu du document.
+  const entetesApi = useEntetesApi();
+
   useEffect(() => {
     const mime = mimeType || mimeFromName(fileName);
     const n = fileName || '';
@@ -141,7 +146,7 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
       setState({ kind: 'loading' });
       try {
         // Récupération « safe » : jamais de réponse `application/pdf` au fetch().
-        const { buffer: buf, mime: servedMime } = await fetchFileBytes(url);
+        const { buffer: buf, mime: servedMime } = await fetchFileBytes(url, entetesApi);
         if (cancelled) return;
 
         const decided = decideFromServed(servedMime);
@@ -245,7 +250,7 @@ export default function DocumentViewer({ url, fileName, title, mimeType }: Docum
       destroyPdf();
       setThumbs([]);
     };
-  }, [url, fileName, mimeType, revoke, destroyPdf]);
+  }, [url, fileName, mimeType, revoke, destroyPdf, entetesApi]);
 
   // Rendu de la page PDF courante dans le canvas.
   const isPdf = state.kind === 'pdf';

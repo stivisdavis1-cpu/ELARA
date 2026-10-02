@@ -104,10 +104,25 @@ export class ScannerService {
         });
         if (existant) {
           this.logger.log(`Document déjà présent (${hash.slice(0, 12)}…), rien à réimporter.`);
+          // `documentId` et non `document_id` : l'écran lit la forme camelCase
+          // pour toutes les autres réponses. Un identifiant absent dans cette
+          // forme était interprété comme un échec d'envoi, et un réimport
+          // inoffensif affichait « analyse impossible » pour un document
+          // pourtant présent en base.
           return {
+            documentId: existant.id,
             document_id: existant.id,
+            dejaPresent: true,
             statut: 'deja_present',
             message: 'Ce document est déjà dans la GED : le réimport a été ignoré.',
+            name: existant.type_document || file.originalname,
+            type: existant.type_document || '',
+            status: 'Déjà enregistré',
+            statusColor: 'var(--teal)',
+            statusBg: 'rgba(20, 184, 166, 0.1)',
+            extractedData: {},
+            alert: null,
+            ocrText: '',
             document: existant,
           };
         }
@@ -119,21 +134,25 @@ export class ScannerService {
     // DÉTECTION DOCUMENT LOURD (ex: > 5 pages ou > 5MB)
     if (totalPages > 5 || fileBuffer.length > 5 * 1024 * 1024) {
       this.logger.log(`Document complexe détecté (${totalPages} pages, ${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB). Délégation totale de l'extraction OCR au worker via RabbitMQ pour ${docId}...`);
-      await this.rabbitmqService.publishDocumentTask(docId, url, file.mimetype, tenantId);
-      
-      return {
-        message: 'Le document est volumineux. Un traitement approfondi est en cours en arrière-plan.',
-        documentId: docId,
-        url: url,
-        name: file.originalname,
-        type: 'Traitement Lourd',
-        status: 'En file d\'attente IA',
-        statusColor: 'var(--amber)',
-        statusBg: 'rgba(245, 158, 11, 0.1)',
-        extractedData: { 'Analyse': 'Extraction multi-pages en cours sur nos serveurs...' },
-        alert: null,
-        ocrText: ''
-      };
+      // Sans file d'attente, le document resterait « en attente » pour toujours.
+      // On ne le déclare donc mis en file que si la publication a réellement eu
+      // lieu ; sinon l'analyse continue ci-dessous, comme un document normal.
+      if (await this.publierAnalyseDeFond(docId, url, file.mimetype, tenantId)) {
+        return {
+          message: 'Le document est volumineux. Un traitement approfondi est en cours en arrière-plan.',
+          documentId: docId,
+          url: url,
+          name: file.originalname,
+          type: 'Traitement Lourd',
+          status: 'En file d\'attente IA',
+          statusColor: 'var(--amber)',
+          statusBg: 'rgba(245, 158, 11, 0.1)',
+          extractedData: { 'Analyse': 'Extraction multi-pages en cours sur nos serveurs...' },
+          alert: null,
+          ocrText: ''
+        };
+      }
+      this.logger.warn(`File d'attente indisponible : ${docId} est analysé directement malgré sa taille.`);
     }
 
     this.logger.log(`Extraction OCR synchrone en cours pour le document ${docId}...`);
@@ -151,23 +170,37 @@ export class ScannerService {
       alert: null
     };
 
-    try {
-      ocrText = await this.ocrService.extractText(fileBuffer, file.mimetype);
-      
-      this.logger.log(`Appel à FastAPI (Cloud LLM) pour extraction rapide JSON...`);
-      // Appel API FastAPI (routeur hybride Groq/Together AI avec failover)
-      const axios = (await import('axios')).default;
-      const response = await axios.post(`${this.aiUrl}/ai/extract`, {
-         text: ocrText,
-         tenant_id: tenantId
-      }, { timeout: 15000 });
-      const aiData = response.data;
-      
-      analysis = {
+      try {
+        ocrText = await this.ocrService.extractText(fileBuffer, file.mimetype);
+
+        // L'enrichissement par le modèle est un supplement, pas une condition.
+        // Tant qu'il était dans le même bloc que l'OCR, une indisponibilité de
+        // l'IA suffisait à faire échouer l'analyse entière : le document restait
+        // « En traitement » indéfiniment et ne rejoignait jamais l'index, donc
+        // les agents n'en savaient rien. Un texte extrait sans rien de plus
+        // vaut infiniment mieux qu'un document invisible.
+        let aiData: Record<string, unknown> = {};
+        try {
+          this.logger.log(`Appel à FastAPI (Cloud LLM) pour extraction rapide JSON...`);
+          // Appel API FastAPI (routeur hybride Groq/Together AI avec failover)
+          const axios = (await import('axios')).default;
+          const response = await axios.post(`${this.aiUrl}/ai/extract`, {
+             text: ocrText,
+             tenant_id: tenantId
+          }, { timeout: 15000 });
+          aiData = response.data ?? {};
+        } catch (aiErr: any) {
+          this.logger.warn(
+            `Analyse IA indisponible pour ${docId} (${aiErr.message}). ` +
+            `Le document reste indexé et interrogeable, mais sans champs structurés.`
+          );
+        }
+
+        analysis = {
           smartName: file.originalname,
           // Le type renvoyé par le LLM n'est pas fiable : on le recoupe
           // avec le texte avant de le persister.
-          type: this.classerDocument(ocrText, aiData.type),
+          type: this.classerDocument(ocrText, (aiData.type as string) ?? null),
           status: 'Analyse Terminée',
           statusColor: 'var(--blue)',
           statusBg: 'var(--blue-light)',
@@ -200,15 +233,26 @@ export class ScannerService {
       analysis.mots_cles = semis.valides;
       analysis.mots_cles_a_valider = semis.aValider;
 
-      // Publish shadow task to RabbitMQ for memory and background analysis
+      // Sans cet appel, le document n'existe pas pour la recherche : c'est ce
+      // qui permet ensuite à l'agent de citer le document et sa page.
+      await this.indexerDocument(docId, tenantId, ocrText).catch((e) => {
+        this.logger.warn(`Indexation impossible pour ${docId}: ${e.message}`);
+      });
+
+      // Publication de la tâche d'analyse de fond. Elle est *facultative* : le
+      // document est déjà enregistré, indexé et lisible à ce stade. La publication
+      //levait une exception quand la file était indisponible, et le bloc catch
+      //essayait de republier puis levait à nouveau : une simple file d'attente en
+      //panne transformait une analyse réussie en « échec », et l'écran affichait un
+      //document inexistant alors qu'il était en base.
       this.logger.log(`Publication dans RabbitMQ (document_shadow_processing) pour l'analyse de fond de ${docId}...`);
-      await this.rabbitmqService.publishDocumentTask(docId, url, file.mimetype, tenantId);
+      await this.publierAnalyseDeFond(docId, url, file.mimetype, tenantId);
 
     } catch (e) {
       this.logger.error(`Erreur d'extraction OCR/IA: ${e}`);
       // Fallback: Délégation à RabbitMQ si l'extraction locale échoue
       this.logger.log(`Délégation de l'extraction OCR au worker FastAPI via RabbitMQ pour ${docId}...`);
-      await this.rabbitmqService.publishDocumentTask(docId, url, file.mimetype, tenantId);
+      await this.publierAnalyseDeFond(docId, url, file.mimetype, tenantId);
       
       return {
         message: 'Le document a été mis en file d\'attente pour le traitement OCR asynchrone.',
@@ -239,6 +283,35 @@ export class ScannerService {
       alert: analysis.alert,
       ocrText: ocrText
     };
+  }
+
+  /**
+   * Publie la tâche d'analyse de fond sans jamais faire échouer l'appelant.
+   *
+   * L'analyse de fond est un complément : le document est déjà enregistré et
+   * lisible. Une file d'attente indisponible doit se traduire par un avertissement
+   * journalisé, pas par une erreur renvoyée à l'écran — l'utilisateur venait de
+   * voir « échec de l'analyse » pour un document réellement enregistré.
+   *
+   * Renvoie `false` quand la publication n'a pas eu lieu, afin que l'appelant
+   * puisse traiter le document lui-même plutôt que de le laisser en attente
+   * indéfiniment.
+   */
+  private async publierAnalyseDeFond(
+    docId: string,
+    url: string,
+    mimeType: string,
+    tenantId: string,
+  ): Promise<boolean> {
+    try {
+      await this.rabbitmqService.publishDocumentTask(docId, url, mimeType, tenantId);
+      return true;
+    } catch (e: any) {
+      this.logger.warn(
+        `Analyse de fond non publiée pour ${docId} (file indisponible) : ${e?.message ?? e}.`,
+      );
+      return false;
+    }
   }
 
   async handleDocumentProcessed(data: any) {
@@ -336,56 +409,114 @@ export class ScannerService {
       this.logger.warn(`Persistance de l'extraction impossible pour ${data.document_id}: ${e.message}`);
     }
 
+    // --- Indexation documentaire ---
+    //
+    // Le chemin synchrone indexe déjà le document, mais un document traité
+    // uniquement par le worker (OCR lourd, extraction cloud indisponible)
+    // n'était jamais découpé : il devenait invisible pour l'agent. C'est
+    // `indexerDocument` qui supprime les chunks existants avant d'écrire,
+    // donc ce second passage est sans effet sur un document déjà indexé.
+    await this.indexerDocument(doc.id, doc.tenant_id, typeof data.ocr_text === 'string' ? data.ocr_text : '').catch((e) => {
+      this.logger.warn(`Indexation impossible pour ${doc.id}: ${e.message}`);
+    });
+
     // --- 3. INTÉGRATION INTELLIGENTE (Mémoire + P&L) ---
+    //
+    // Le sens de l'opération est décidé par le worker (`extraction.sens`) :
+    //  - `vente` : l'entreprise facture un client  → créance (client_id)
+    //  - `achat` : un fournisseur facture l'entreprise → dette (fournisseur_id)
+    //  - `inconnu` : rien n'est créé. On ne devine pas le sens d'une pièce, on
+    //    la laisse en revue : une créance inventée fausse le BFR, et une dette
+    //    inventée fausse le runway.
     if (data.extraction && statutDoc !== 'non_conforme') {
-        const fournisseur = await this.memoireService.trouverOuCreerEntite(doc.tenant_id, 'fournisseur', {
-            nom: data.extraction.nom_fournisseur,
-            niu: data.extraction.niu_fournisseur,
-            rccm: data.extraction.rccm_fournisseur
-        });
+        const extraction = data.extraction as any;
+        const sens: string = extraction.sens || 'inconnu';
+        const tiersNom: string | null = extraction.tiers_nom || null;
+        const tiersIdentifiant: string | null = extraction.tiers_identifiant || null;
+        const montantTotal = Number(extraction.montant_total ?? 0);
 
-        if (data.type_document === 'facture') {
-            await this.memoireService.createFacture(doc.tenant_id, {
-                fournisseur_id: fournisseur.id,
-                numero: data.extraction.numero_facture,
-                categorie: data.extraction.categorie || 'Non classé',
-                montant_ht: data.extraction.montant_ht,
-                taux_tva: data.extraction.taux_tva,
-                montant_tva: data.extraction.montant_tva,
-                montant_total: data.extraction.montant_total,
-                date_emission: safeDate(data.extraction.date_emission),
-                date_echeance: safeDate(data.extraction.date_echeance),
-                statut: doc.statut_validation === 'valide_automatiquement' ? 'envoyee' : 'brouillon',
-                document_id: doc.id
-            });
+        const typeDoc = String(data.type_document || '');
 
-            // --- 4. ALERTE CFO IMMÉDIATE (Cash Runway) ---
-            if (doc.statut_validation === 'valide_automatiquement' && data.extraction.montant_total > 500000) {
-               // On check l'impact sur le Runway
-               const runway = await this.cfoService.getCashRunway(doc.tenant_id);
-               if (runway.alerte === 'CRITIQUE') {
-                   alertMessage = `Alerte CFO: Cette facture réduit votre Runway en dessous de 3 mois (${runway.runway_en_mois} mois restants). Action requise.`;
-               }
-            }
+        // Un relevé bancaire ne se summarizes pas en un encaissement. Son total
+        // est un solde ou un cumul de mouvements dont on ignore le sens : le
+        // traiter comme un paiement unique fabriquerait de la trésorerie, et
+        // donc un runway, entièrement fictifs. Il faut les lignes (débit,
+        // crédit, date, référence) pour créer des règlements réels — la pièce
+        // reste donc en revue tant que ce n'est pas le cas.
+        const estReleve = /recu|depot|r[eé]lev[eé]|releve|statement/i.test(typeDoc);
+        if (estReleve) {
+            this.logger.warn(
+                `Relevé bancaire ${doc.id} : aucune écriture de trésorerie créée. ` +
+                `Le total d'un relevé ne dit pas le sens des mouvements ; ` +
+                `les lignes débit/crédit sont requises pour créer des règlements.`
+            );
+        }
 
-        } else if (data.type_document === 'recu' || data.type_document === 'depense') {
+        // Les pièces qui portent sur une charge de personnel n'ont pas de tiers
+        // : exiger un nom de client ou de fournisseur les faisait disparaître
+        // silencieusement de la comptabilité.
+        if (!estReleve && /bulletin|fiche de paie|salaire/i.test(typeDoc) && montantTotal > 0) {
+            // La masse salariale est une sortie réelle, pas une dette.
             await this.memoireService.createDepense(doc.tenant_id, {
-                fournisseur_id: fournisseur.id,
-                montant: data.extraction.montant_total,
-                categorie: data.extraction.categorie || 'Autre',
-                date_depense: data.extraction.date_emission ? new Date(data.extraction.date_emission) : new Date(),
-                description: `Secteur AI: ${data.extraction.secteur_fournisseur || 'Inconnu'}`,
+                fournisseur_id: null,
+                montant: montantTotal,
+                categorie: 'Charges de personnel',
+                date_depense: safeDate(extraction.date_emission) || new Date(),
+                description: extraction.resume || 'Bulletin de paie',
                 document_id: doc.id
             });
-        } else if (data.type_document === 'commande') {
-            await this.memoireService.createCommande(doc.tenant_id, {
-                fournisseur_id: fournisseur.id,
-                numero: data.extraction.numero_facture,
-                montant_total: data.extraction.montant_total,
-                date_commande: data.extraction.date_emission ? new Date(data.extraction.date_emission) : null,
-                statut: 'validee',
-                document_id: doc.id
-            });
+        }
+
+        // Les écritures suivantes exigent toutes une entité réelle du tenant.
+        if (tiersNom) {
+            const roleEntite = sens === 'vente' ? 'client' : 'fournisseur';
+            const tiers = await this.memoireService
+                .trouverOuCreerEntite(doc.tenant_id, roleEntite, {
+                    nom: tiersNom,
+                    niu: tiersIdentifiant || undefined,
+                    rccm: extraction.rccm_tiers || undefined,
+                })
+                .catch((e) => {
+                    this.logger.warn(`Tiers "${tiersNom}" non résolu : ${e.message}`);
+                    return null;
+                });
+
+            if (/facture/i.test(typeDoc) && sens !== 'inconnu' && montantTotal > 0 && tiers) {
+                const statut = doc.statut_validation === 'valide_automatiquement' ? 'envoyee' : 'brouillon';
+                await this.memoireService.createFacture(doc.tenant_id, {
+                    ...(sens === 'vente' ? { client_id: tiers.id } : { fournisseur_id: tiers.id }),
+                    numero: extraction.numero_facture || undefined,
+                    categorie: extraction.categorie || 'Non classé',
+                    montant_ht: extraction.montant_ht,
+                    taux_tva: extraction.taux_tva,
+                    montant_tva: extraction.montant_tva,
+                    montant_total: montantTotal,
+                    date_emission: safeDate(extraction.date_emission),
+                    date_echeance: safeDate(extraction.date_echeance),
+                    statut: statut,
+                    document_id: doc.id
+                });
+
+                // --- 4. ALERTE CFO IMMÉDIATE (Cash Runway) ---
+                // Une facture d'achat consomme de la trésorerie ; une facture de
+                // vente n'est pas une sortie. Alerter sur une créance serait faux.
+                if (sens === 'achat' && doc.statut_validation === 'valide_automatiquement' && montantTotal > 500000) {
+                    const runway = await this.cfoService.getCashRunway(doc.tenant_id);
+                    if (runway.alerte === 'CRITIQUE') {
+                        alertMessage = `Alerte CFO: Cette facture réduit votre Runway en dessous de 3 mois (${runway.runway_en_mois} mois restants). Action requise.`;
+                    }
+                }
+            } else if (/commande|bon de commande/i.test(typeDoc) && montantTotal > 0 && tiers) {
+                await this.memoireService.createCommande(doc.tenant_id, {
+                    fournisseur_id: sens === 'achat' ? tiers.id : null,
+                    client_id: sens === 'vente' ? tiers.id : null,
+                    numero: extraction.numero_facture || null,
+                    montant_total: montantTotal,
+                    date_commande: safeDate(extraction.date_emission) || null,
+                    statut: 'validee',
+                    document_id: doc.id
+                });
+            }
         }
     }
 
@@ -840,6 +971,34 @@ export class ScannerService {
       if (v) paires.push({ nature: 'texte', label: champ, valeur: v });
     }
 
+    // Valeurs comptables et textuelles.
+    //
+    // Elles doivent être visibles dans la fiche du document, avec leur
+    // confiance, avant d'être reprises comme écritures : c'est le moment où
+    // l'utilisateur vérifie ce que l'IA a lu. Les montants sont des nombres
+    // issus du texte ; on les recopie tels quels, sans les recalculer ni les
+    // arrondir.
+    const montants: [string, unknown][] = [
+      ['Montant HT', extraction.montant_ht],
+      ['Montant TVA', extraction.montant_tva],
+      ['Montant TTC', extraction.montant_ttc],
+    ];
+    for (const [label, brut] of montants) {
+      const nombre = Number(brut);
+      if (brut === null || brut === undefined || !Number.isFinite(nombre) || nombre === 0) continue;
+      paires.push({ nature: 'montant', label, valeur: String(nombre) });
+    }
+    for (const champ of ['numero_facture', 'taux_tva', 'devise'] as const) {
+      const v = extraction[champ];
+      if (v === null || v === undefined || v === '') continue;
+      paires.push({ nature: 'identifiant', label: champ, valeur: String(v).trim() });
+    }
+    for (const champ of ['emetteur_nom', 'tiers_nom', 'sens'] as const) {
+      const v = extraction[champ];
+      if (v === null || v === undefined || v === '') continue;
+      paires.push({ nature: 'acteur', label: champ, valeur: String(v).trim() });
+    }
+
     let valides = 0;
     let aValider = 0;
     for (const p of paires) {
@@ -858,6 +1017,99 @@ export class ScannerService {
       `Éléments semés pour ${documentId} : ${valides} validé(s) automatiquement, ${aValider} à vérifier.`,
     );
     return { total: valides + aValider, valides, aValider };
+  }
+
+  /**
+   * Découpe un texte OCR en fragments indexables.
+   *
+   * Découpagealigné sur le worker OCR lourd (800 caractères, 100 de
+   * recouvrement) pour que les deux chemins produisent les mêmes frontières.
+   * Exporté pour être testable isolément.
+   */
+  static decouperPourIndex(texte: string, taille = 800, recouvrement = 100): string[] {
+    const normalise = (texte ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').trim();
+    if (!normalise) return [];
+
+    const pas = Math.max(taille - recouvrement, 1);
+    const morceaux: string[] = [];
+    for (let i = 0; i < normalise.length; i += pas) {
+      const morceau = normalise.slice(i, i + taille).trim();
+      if (morceau.length > 10) morceaux.push(morceau);
+      if (morceaux.length >= 200) break;
+    }
+    return morceaux;
+  }
+
+  /**
+   * Indexe un document dans `document_chunks`, sans quoi le moteur de recherche
+   * n'a rien à interroger : la table était lue par la recherche lexicale et
+   * vectorielle mais n'était jamais alimentée, donc la mémoire documentaire du
+   * client était structurellement vide.
+   *
+   * L'embedding est facultatif : sans fournisseur joignable, le fragment est
+   * tout de même écrit avec `embedding = NULL`, ce qui le laisse disponible en
+   * recherche lexicale. On n'écrit jamais de vecteur de substitution : un
+   * vecteur calculé sur autre chose que le texte rend les similarités
+   * silencieusement fausses, ce qui est pire que pas de recherche sémantique.
+   *
+   * L'opération est idempotente : les fragments du document sont remplacés, ce
+   * qui permet de réindexer après une correction.
+   */
+  private async indexerDocument(
+    documentId: string,
+    tenantId: string,
+    texte: string,
+  ): Promise<{ fragments: number; vectorises: number }> {
+    const morceaux = ScannerService.decouperPourIndex(texte);
+    if (!morceaux.length) return { fragments: 0, vectorises: 0 };
+
+    const doc = await this.prisma.document.findFirst({
+      where: { id: documentId, tenant_id: tenantId },
+      select: { id: true, type_document: true },
+    });
+    if (!doc) return { fragments: 0, vectorises: 0 };
+
+    const titre = doc.type_document || 'Document';
+    await this.prisma.$executeRawUnsafe(
+      `DELETE FROM document_chunks WHERE document_id = $1`,
+      documentId,
+    );
+
+    let vectorises = 0;
+    for (const morceau of morceaux) {
+      // Budget : au-delà, un document très long ferait exploser le temps
+      // d'ingestion. Au-delà du budget, les fragments restent indexés en lexical.
+      const embedding =
+        vectorises < 40 ? await this.searchService.generateEmbedding(morceau) : null;
+      if (embedding) vectorises += 1;
+
+      try {
+        // `titre_document` n'est pas écrit : la recherche lit
+        // COALESCE(c.titre_document, d.type_document). Denormaliser le titre ici
+        // créerait une seconde source de vérité qui se désynchronise dès que le
+        // type du document est reclassé, et la colonne n'existe que sur les
+        // bases ayant vu la migration 04.
+          // `id` est NOT NULL et sans défaut : l'omettre fait échouer toute
+          // l'insertion (violation 23502) et laissait le document sans aucun
+          // fragment, donc invisible pour la recherche comme pour les agents.
+          // `tenant_id` n'existe pas sur cette table, l'isolation passant par la
+          // jointure sur `documents`.
+          await this.prisma.$executeRawUnsafe(
+            `INSERT INTO document_chunks (id, document_id, page_number, content, embedding)
+             VALUES (gen_random_uuid(), $1, NULL, $2, $3::vector)`,
+            documentId,
+            morceau,
+            embedding ? `[${embedding.join(',')}]` : null,
+          );
+      } catch (e) {
+        this.logger.warn(`Fragment non indexé pour ${documentId}: ${(e as Error).message}`);
+      }
+    }
+
+    this.logger.log(
+      `Indexation ${documentId} : ${morceaux.length} fragment(s), ${vectorises} vectorisé(s).`,
+    );
+    return { fragments: morceaux.length, vectorises };
   }
 
   /**
@@ -949,6 +1201,41 @@ export class ScannerService {
       `Document ${documentId} validé & archivé (diskgroup sécurisé + index logique mémoire/BDD).`,
     );
     return logical;
+  }
+
+  /**
+   * Rejette un document en attente de validation.
+   *
+   * La décision était purement cosmétique côté interface : le statut n'était
+   * écrit que dans l'état du navigateur, et le document revenait « en attente »
+   * au rechargement. Le rejet est ici un vrai changement d'état, et il refuse
+   * un document déjà archivé — l'archivage est la source de vérité du dossier
+   * et on ne revient pas en arrière dessus.
+   */
+  async rejectDocument(tenantId: string, documentId: string, motif?: string) {
+    const doc = await this.findDocumentWithArchive(documentId);
+    if (!doc || doc.tenant_id !== tenantId) {
+      throw new BadRequestException('Document introuvable ou accès refusé.');
+    }
+    if (doc.archive_path) {
+      throw new BadRequestException('Document archivé : le rejet ne s\'applique plus.');
+    }
+
+    await this.prisma.$executeRawUnsafe(
+      `UPDATE documents
+         SET statut_validation = 'rejete', updated_at = NOW()
+       WHERE id = $1`,
+      documentId,
+    );
+
+    this.gateway.notifyDocumentStatus(tenantId, documentId, 'Rejeté', {
+      statusColor: 'var(--red)',
+      statusBg: 'rgba(162, 59, 59, 0.1)',
+      motif: motif ?? null,
+    });
+    this.logger.log(`Document ${documentId} rejeté par un administrateur du tenant ${tenantId}.`);
+
+    return { id: documentId, statut: 'rejete', libelle: 'Rejeté', motif: motif ?? null };
   }
 
   /** Index logique des archives : lu en mémoire (rapide) + fusionné avec la BDD. */
@@ -1087,7 +1374,11 @@ export class ScannerService {
     if (name.startsWith('archive://')) name = name.slice('archive://'.length);
     const parts = name.split('/').filter(Boolean);
     if (parts.length) name = parts[parts.length - 1];
-    return name.replace(/^[a-f0-9]{8,}-/i, '').replace(/_/g, ' ') || 'Document';
+    // Le nom affiché est le nom réel du fichier. Remplacer les « _ » par des
+    // espaces donnait « test invoice2.pdf » pour un fichier nommé
+    // « test_invoice2.pdf » : la recherche par nom exact échouait et l'historique
+    // ne correspondait plus à ce que l'utilisateur a téléversé.
+    return name.replace(/^[a-f0-9]{8,}-/i, '') || 'Document';
   }
 
   private buildArchiveRecord(doc: any): any {

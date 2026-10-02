@@ -28,13 +28,13 @@ export class UtilisateursController {
 
   @Patch(':id/role')
   @ApiOperation({ summary: 'Changer le rôle d’un compte' })
-  changerRole(@TenantId() tenantId: string, @Param('id') id: string, @Body() data: any) {
-    return this.utilisateurs.changerRole(tenantId, id, data?.role);
+  changerRole(@TenantId() tenantId: string, @Param('id') id: string, @Body() data: any, @Req() req: any) {
+    return this.utilisateurs.changerRole(tenantId, id, data?.role, req.user?.userId);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Retirer un compte de l’organisation' })
-  retirer(@TenantId() tenantId: string, @Param('id') id: string) {
-    return this.utilisateurs.retirer(tenantId, id);
+  retirer(@TenantId() tenantId: string, @Param('id') id: string, @Req() req: any) {
+    return this.utilisateurs.retirer(tenantId, id, req.user?.userId);
   }
 }

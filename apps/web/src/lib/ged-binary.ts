@@ -1,4 +1,6 @@
+import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
+import { COOKIE_TENANT } from "@/lib/tenant";
 
 /**
  * Transport binaire pour les Route Handlers.
@@ -14,11 +16,14 @@ export async function gedBinaryRoute(
 ): Promise<{ octets: ArrayBuffer; nom: string }> {
   const session = await auth();
   const apiUrl = process.env.API_NEST_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-  const token = session?.accessToken ?? (process.env.NODE_ENV !== "production" ? "test-token" : null);
+  // Ni jeton ni tenant de repli : sans session réelle, l'appel n'a pas lieu.
+  // Le tenant vient du cookie `elara_tenant`, seule source de vérité, et non
+  // de `session.tenantId` qui peut valoir null pour un membre multi-tenant.
+  const token = session?.accessToken;
   if (!token) throw new Error("Session expirée : reconnectez-vous.");
 
-  const tenantId = session?.tenantId?.trim() || (process.env.NODE_ENV !== "production" ? "test-tenant" : null);
-  if (!tenantId) throw new Error("Aucun tenant dans la session : reconnectez-vous.");
+  const tenantId = (await cookies()).get(COOKIE_TENANT)?.value?.trim();
+  if (!tenantId) throw new Error("Aucune entreprise sélectionnée : reconnectez-vous.");
 
   const reponse = await fetch(`${apiUrl}${endpoint}`, {
     cache: "no-store",

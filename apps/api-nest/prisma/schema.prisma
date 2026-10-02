@@ -51,8 +51,9 @@ model Tenant {
   parametres        Json?            @default("{}")
   created_at        DateTime         @default(now())
 
-  users              User[]
-  user_tenants       UserTenant[]
+    users              User[]
+    user_tenants       UserTenant[]
+    invitations        Invitation[]
   clients            Client[]
   fournisseurs       Fournisseur[]
   factures           Facture[]
@@ -83,15 +84,48 @@ model User {
   role                RoleUtilisateur
   keycloak_subject_id String?         @unique
 
+  // NULL tant que l'invité n'a pas choisi son mot de passe. Cette colonne
+  // est la seule preuve exploitable : Keycloak ne renvoie pas les
+  // identifiants d'un utilisateur, donc l'API ne peut pas savoir par elle-même
+  // si une identité a déjà un mot de passe.
+  mot_de_passe_defini_le DateTime?
+
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
 
-  tenant       Tenant       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  user_tenants UserTenant[]
-
-  @@map("users")
-}
+    tenant       Tenant       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+    user_tenants UserTenant[]
+    invitations  Invitation[]
+  
+    @@map("users")
+  }
+  
+  // Lien d'activation d'un compte invité.
+  //
+  // Le jeton n'est conservé que sous forme d'empreinte : la base ne permet pas
+  // de mettre un compte en danger à elle seule. Une invitation est à usage
+  // unique et expirable — c'est ce qui permet à l'invité de choisir son mot de
+  // passe, l'administrateur ne le connaissant jamais.
+  model Invitation {
+    id         String   @id @default(uuid())
+    tenant_id  String
+    user_id    String?
+    email      String
+    role       RoleUtilisateur @default(utilisateur_standard)
+    jeton_hash String   @unique
+    expire_le  DateTime
+    utilise_le DateTime?
+    invite_par String?
+    created_at DateTime @default(now())
+  
+    tenant Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+    user   User?  @relation(fields: [user_id], references: [id], onDelete: SetNull)
+  
+    @@index([email])
+    @@index([expire_le])
+    @@map("invitations")
+  }
 
 model UserTenant {
   user_id   String
@@ -243,17 +277,25 @@ model Paiement {
   tenant_id     String
   client_id     String?
   facture_id    String?
+  document_id   String?
+  reference     String?
   montant       Decimal  @db.Decimal(10, 2)
   date_paiement DateTime @default(now())
-  mode_paiement String? // Ex: virement, CB, chèque
+  mode_paiement String? // Ex: virement, CB, ch�que
 
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   deleted_at DateTime?
 
-  tenant  Tenant   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
-  client  Client?  @relation(fields: [client_id], references: [id])
-  facture Facture? @relation(fields: [facture_id], references: [id])
+  tenant   Tenant    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  client   Client?   @relation(fields: [client_id], references: [id])
+  facture  Facture?  @relation(fields: [facture_id], references: [id])
+  document Document? @relation(fields: [document_id], references: [id], onDelete: SetNull)
+
+  // Un relevé bancaire réimporté ne doit pas compter deux fois en trésorerie.
+  // La référence de l'opération identifie le mouvement à l'intérieur du relevé.
+  @@unique([tenant_id, document_id, reference])
+  @@index([tenant_id, date_paiement])
 
   @@map("paiements")
 }
@@ -304,6 +346,7 @@ model Document {
 
   factures          Facture[]
   depenses          Depense[]
+  paiements         Paiement[]
   commandes         Commande[]
   chunks            DocumentChunk[]
   documents_generes DocumentGenere[]

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { formatCFA, toNum } from "@/lib/utils";
-import { getReportData } from "@/lib/ged-api";
+import { getProfilTenant, getReportData } from "@/lib/ged-api";
 import type {
   CfoSynthese,
   CfoRunway,
@@ -40,6 +40,9 @@ export default function ReportPage() {
   const [docs, setDocs] = useState<DocLigne[]>([]);
   const [anomalies, setAnomalies] = useState<AnomalieDoc[]>([]);
   const [paiements, setPaiements] = useState<PaiementLigne[]>([]);
+  // Raison sociale réelle de l'entreprise courante : elle était écrite en dur,
+  // ce qui faisait porter au rapport d'une autre société que celle des données.
+  const [entreprise, setEntreprise] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const d = await getReportData();
@@ -56,6 +59,9 @@ export default function ReportPage() {
     setPaiements(d.paiements);
     setError(d.error);
     setLoading(false);
+
+    const profil = await getProfilTenant().catch(() => null);
+    setEntreprise(profil?.raison_sociale ?? null);
   }, []);
 
   useEffect(() => {
@@ -180,7 +186,9 @@ export default function ReportPage() {
             <span>Rapport généré automatiquement</span>
           </div>
           <h1 className="page-title">Rapport de santé</h1>
-          <p className="page-sub">OrbitTech Services · données consolidées en temps réel depuis votre Business Memory.</p>
+          <p className="page-sub">
+            {entreprise ? `${entreprise} · ` : ""}données consolidées en temps réel depuis votre Business Memory.
+          </p>
         </div>
         <div className="topbar-actions hide-on-print">
           <button className="btn btn-ghost hover-scale" onClick={handleShare} style={{ cursor: 'pointer' }}>Partager</button>
@@ -192,7 +200,8 @@ export default function ReportPage() {
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', background: 'var(--green-bg)', border: 'none' }}>
         <span style={{ fontSize: '15px' }}>📲</span>
         <div style={{ fontSize: '12.5px', color: 'var(--ink-2)' }}>
-          <strong>Diffusion automatique :</strong> ce résumé est envoyé chaque lundi 7h par WhatsApp au dirigeant, sans qu’il ait besoin d’ouvrir Elara — les urgences (facture très en retard, anomalie forte) déclenchent une alerte immédiate hors du cycle hebdomadaire.
+          <strong>Ce que contient ce rapport :</strong> uniquement des indicateurs calculés à partir de vos factures,
+          paiements, dépenses et documents. Les sections sans donnée restent vides plutôt que d&apos;afficher une valeur estimée.
         </div>
       </div>
 

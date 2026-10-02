@@ -20,15 +20,43 @@
 -- ============================================================
 
 -- Le rôle IA et le rôle d'intégration externe existent côté Prisma mais
--- manquaient dans l'enum PostgreSQL : on les ajoute (idempotent).
+-- peuvent manquer dans l'enum PostgreSQL déjà créé en base.
+--
+-- Le nom du type n'est pas le même des deux côtés : `schema.prisma` déclare
+-- `RoleUtilisateur`, et la base a pu être amorcée soit par Prisma, soit par
+-- `init_supabase.sql`. On cherche donc le type sans tenir compte de la casse et
+-- on n'exécute l'ALTER que sur le nom réellement trouvé, via EXECUTE — un
+-- nom en dur casserait sur la casse et ferait échouer toute la migration.
 DO $$
+DECLARE
+  v_type   TEXT;
+  v_labels TEXT[] := ARRAY['assistant_ia_systeme', 'integration_externe'];
+  v_label  TEXT;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname = 'role_utilisateur' AND e.enumlabel = 'assistant_ia_systeme') THEN
-    ALTER TYPE "role_utilisateur" ADD VALUE 'assistant_ia_systeme';
+  SELECT t.typname INTO v_type
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+   WHERE n.nspname = current_schema()
+     AND lower(t.typname) = 'roleutilisateur'
+     AND t.typtype = 'e'
+   LIMIT 1;
+
+  -- Base sans cet enum (rôles stockés en TEXT) : rien à faire, l'application
+  -- n'a pas besoin des valeurs.
+  IF v_type IS NULL THEN
+    RETURN;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid WHERE t.typname = 'role_utilisateur' AND e.enumlabel = 'integration_externe') THEN
-    ALTER TYPE "role_utilisateur" ADD VALUE 'integration_externe';
-  END IF;
+
+  FOREACH v_label IN ARRAY v_labels LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_enum e
+        JOIN pg_type t ON t.oid = e.enumtypid
+       WHERE lower(t.typname) = 'roleutilisateur'
+         AND e.enumlabel = v_label
+    ) THEN
+      EXECUTE format('ALTER TYPE %I ADD VALUE %L', v_type, v_label);
+    END IF;
+  END LOOP;
 END
 $$;
 

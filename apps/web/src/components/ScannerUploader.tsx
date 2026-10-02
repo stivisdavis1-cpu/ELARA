@@ -5,6 +5,7 @@ import { Scan, Loader2, CheckCircle } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { io, Socket } from "socket.io-client";
 import { socketScanner } from "@/lib/api-url";
+import { useEntrepriseCourante } from "@/components/TenantContext";
 
 interface ScannerUploaderProps {
   onScanComplete?: (documents: any[]) => void;
@@ -20,13 +21,18 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<Socket | null>(null);
-  const tenantId = (session?.user as any)?.tenantId || '';
+  // L'entreprise courante est lue par le layout côté serveur : sans elle, aucun
+  // appel API n'est possible. Elle n'est jamais devinée.
+  const tenantId = useEntrepriseCourante() || '';
 
   useEffect(() => {
     if (session?.user) {
+      // Sans entreprise, pas de canal de notifications : le tenant d'un
+      // document est ce qui l'autorise à en recevoir.
+      if (!tenantId) return;
       // Connexion au WebSocket avec le tenantId de l'utilisateur
       const socket = io(socketScanner(), {
-        query: { tenantId: tenantId || 'test-tenant' }
+        query: { tenantId }
       });      
       socket.on('document_status_update', (data) => {
         setUploadedDocs((prevDocs) => {
@@ -146,7 +152,14 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
             mimeType: file.type
           });
         } else {
-          // Gérer le cas d'erreur côté serveur
+          // Gérer le cas d'erreur côté serveur.
+          //
+          // Aucun mot de passe n'est posé dans `ocrText` : y mettre un message
+          // d'erreur faisait passer la ligne pour un document lu, et
+          // l'écran affichait alors « fraude ou non-conformité potentielle » sur
+          // une page que personne n'avait pu lire. Un échec d'analyse n'est
+          // pas une anomalie du document.
+          const echec = await reponse.json().catch(() => null);
           newDocs.push({
             id: `erreur_${Date.now()}_${file.name}`,
             name: file.name,
@@ -157,8 +170,9 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
             statusColor: 'var(--red)',
             statusBg: 'rgba(162, 59, 59, 0.1)',
             extractedData: { 'Erreur': 'Le document est corrompu ou illisible par le moteur OCR.' },
-            alert: true,
-            ocrText: 'Erreur lors de la lecture du document.',
+            alert: false,
+            erreur: (echec && (echec.message || echec.error)) || `Analyse impossible (HTTP ${reponse.status}).`,
+            ocrText: '',
             localFileUrl: URL.createObjectURL(file),
             mimeType: file.type
           });
@@ -176,7 +190,8 @@ export default function ScannerUploader({ onScanComplete }: ScannerUploaderProps
           statusColor: 'var(--red)',
           statusBg: 'rgba(162, 59, 59, 0.1)',
           extractedData: { 'Erreur': message },
-          alert: true,
+          alert: false,
+          erreur: message,
           ocrText: '',
           localFileUrl: URL.createObjectURL(file),
           mimeType: file.type

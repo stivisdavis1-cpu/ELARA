@@ -12,10 +12,14 @@ import { ReactNode, useCallback, useEffect, useRef, useState, useTransition } fr
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 
-export interface ResultatAction {
-  ok: boolean;
-  message: string;
-}
+  export interface ResultatAction {
+    ok: boolean;
+    message: string;
+    /** Précision affichée par le `rendu` de l'action. */
+    note?: string | null;
+    /** Données affichées par le `rendu` de l'action, si elle en prévoit un. */
+    donnees?: unknown;
+  }
 
 export interface ChampAction {
   cle: string;

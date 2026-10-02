@@ -381,6 +381,12 @@ export class OcrService {
         return result.value;
       } else if (mimetype === 'application/rtf' || mimetype === 'text/rtf') {
         return rtfToPlainText(fileBuffer.toString('latin1'));
+      } else if (mimetype.startsWith('text/') || mimetype === 'application/json' || mimetype === 'application/xml') {
+        // Un fichier texte n'a rien à reconnaître : son contenu est déjà le
+        // texte. Sans ce cas, un .txt ou un .csv était refusé puis laissé
+        // indefiniment en cours d'analyse, l'agent ne recevant jamais rien.
+        // Le BOM UTF-8 est retiré pour ne pas polluer le premier mot.
+        return fileBuffer.toString('utf8').replace(/^\uFEFF/, '');
       }
 
       throw new Error(`Format non supporté pour l'OCR: ${mimetype}`);

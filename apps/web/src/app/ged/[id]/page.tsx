@@ -11,6 +11,7 @@ import {
 import DocumentViewer from "@/components/DocumentViewer";
 import { fetchFileBytes } from "@/lib/fileFetch";
 import { exportDocument, type ExportFormat } from "@/lib/exportFile";
+import { useEntetesApi } from "@/components/TenantContext";
 
 const EXPORT_FORMATS: { fmt: ExportFormat; label: string; icon: typeof FileOutput }[] = [
   { fmt: 'pdf', label: 'PDF', icon: FileOutput },
@@ -36,6 +37,7 @@ export default function GedViewPage() {
   const raw = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const id = raw ? decodeURIComponent(raw) : '';
   const { data: session } = useSession();
+  const entetes = useEntetesApi();
 
   const [meta, setMeta] = useState<{ name: string; status: string | null } | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -53,7 +55,7 @@ export default function GedViewPage() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/scanner/documents', { cache: 'no-store' });
+        const res = await fetch('/api/scanner/documents', { headers: entetes, cache: 'no-store' });
         if (!res.ok) return;
         const payload = await res.json();
         const items = Array.isArray(payload?.data) ? payload.data : [];
@@ -65,7 +67,7 @@ export default function GedViewPage() {
       } catch { /* la liste est optionnelle */ }
     })();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, entetes]);
 
   const name = meta?.name || 'Document';
   const url = id ? `/api/scanner/file/${encodeURIComponent(id)}?as=base64` : '';
@@ -75,6 +77,8 @@ export default function GedViewPage() {
     setErrMsg('');
     window.setTimeout(() => setFlash(''), 3000);
   }, []);
+
+  const entetesApi = useEntetesApi();
 
   const handleExport = useCallback(async (fmt: ExportFormat) => {
     if (!id || busyFormat) return;
@@ -94,7 +98,7 @@ export default function GedViewPage() {
     if (!url || downloading) return;
     setDownloading(true);
     try {
-      const { buffer, mime } = await fetchFileBytes(url);
+      const { buffer, mime } = await fetchFileBytes(url, entetesApi);
       const blob = new Blob([buffer], { type: mime });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -105,7 +109,7 @@ export default function GedViewPage() {
       setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     } catch { /* silencieux */ }
     setDownloading(false);
-  }, [url, name, downloading]);
+    }, [url, name, downloading, entetesApi]);
 
   const saveFields = useCallback(async () => {
     if (!id || saving) return;
@@ -114,10 +118,7 @@ export default function GedViewPage() {
     try {
       const res = await fetch(`/api/scanner/documents/${encodeURIComponent(id)}`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(session?.accessToken ? { authorization: `Bearer ${session.accessToken}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json', ...entetesApi },
         body: JSON.stringify({ extractedData: fields }),
       });
       const payload = await res.json().catch(() => null);
@@ -130,7 +131,7 @@ export default function GedViewPage() {
       setErrMsg(e instanceof Error ? e.message : String(e));
     }
     setSaving(false);
-  }, [id, saving, session?.accessToken, fields, flashSoon]);
+  }, [id, saving, entetesApi, fields, flashSoon]);
 
   const updateField = (k: string, v: string) => setFields(prev => ({ ...prev, [k]: v }));
   const addField = () => {

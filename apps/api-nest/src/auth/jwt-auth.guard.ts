@@ -1,37 +1,19 @@
 import { ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 
+/**
+ * Authentification par jeton Keycloak, sans exception.
+ *
+ * Un ancien contournement acceptait `Authorization: Bearer test-token` et
+ * ouvrait une session factice sur l'entreprise de démonstration. Active quel que
+ * soit NODE_ENV, il suffisait donc à connaître cette chaîne pour lire les
+ * documents, factures et journaux de n'importe quel client. Il est
+ * supprimé : un jeton réel est désormais exigé partout, y compris en
+ * développement, où il est obtenu par le même échange de mots de passe.
+ */
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
-  canActivate(context: ExecutionContext) {
-    const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers.authorization;
-    
-    // Bypass in development to prevent 401 from expired NextAuth tokens
-    if (process.env.NODE_ENV !== 'production') {
-      request.user = { userId: '123', tenantId: 'test-tenant', email: 'test@example.com' };
-      return true;
-    }
-
-    if (authHeader && authHeader.includes('test-token')) {
-      // Mock user for development
-      request.user = { userId: '123', tenantId: 'test-tenant', email: 'test@example.com' };
-      return true;
-    }
-    return super.canActivate(context);
-  }
-
-  handleRequest(err: any, user: any, info: any, context: ExecutionContext) {
-    if (process.env.NODE_ENV !== 'production') {
-      return { userId: '123', tenantId: 'test-tenant', email: 'test@example.com' };
-    }
-
-    const request = context.switchToHttp().getRequest();
-    const authHeader = request.headers?.authorization;
-    if (authHeader && authHeader.includes('test-token')) {
-      return { userId: '123', tenantId: 'test-tenant', email: 'test@example.com' };
-    }
-
+  handleRequest(err: any, user: any, info: any, _context: ExecutionContext) {
     if (err || !user) {
       throw err || new UnauthorizedException('Token invalide ou manquant');
     }

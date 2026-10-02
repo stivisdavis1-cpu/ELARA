@@ -8,10 +8,10 @@ export interface FetchedFile {
  * `application/pdf` à fetch() (bloquée dans certains navigateurs/paramètres)
  * : on demande `?as=base64` (JSON) puis on décode.
  *
- * `headers` est indispensable pour les URL de l'API : le proxy Next relaie
- * `/api/scanner/*` vers Nest sans rien ajouter, et le contrôleur lit le
- * tenant sur l'en-tête `x-tenant-id`. Sans lui, Nest retombe sur
- * « test-tenant » et répond 404 sur un document d'un tenant réel.
+ * `headers` est obligatoire pour toute URL de l'API : le proxy Next relaie
+ * `/api/scanner/*` vers Nest sans rien ajouter, et `TenantInterceptor` lit le
+ * tenant sur l'en-tête `x-tenant-id`. Sans cet en-tête, la requête est refusée
+ * (403) — il n'existe aucun tenant par défaut vers lequel se rabattre.
  */
 export async function fetchFileBytes(url: string, headers?: Record<string, string>): Promise<FetchedFile> {
   const res = await fetch(url, { cache: 'no-store', headers });

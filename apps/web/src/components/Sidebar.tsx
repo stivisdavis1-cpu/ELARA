@@ -1,7 +1,8 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { selectionnerEntrepriseAction } from "@/lib/actions";
 import { Icons } from "./Icons";
 
 const pages = [
@@ -29,9 +30,26 @@ const pages = [
   {id:'brand',     label:'Système de marque', icon: 'logo'},
 ];
 
-export const Sidebar = () => {
+export type OrganisationSidebar = {
+  id: string;
+  raison_sociale: string;
+  ville: string | null;
+  plan: string | null;
+  role: string;
+  principale: boolean;
+};
+
+export const Sidebar = ({
+  organisations = [],
+  tenantCourant = null,
+}: {
+  organisations?: OrganisationSidebar[];
+  tenantCourant?: string | null;
+}) => {
   const pathname = usePathname();
+  const router = useRouter();
   const [isCollapsed, setIsCollapsed] = React.useState(false);
+  const [enCours, changer] = React.useTransition();
 
   React.useEffect(() => {
     const shell = document.querySelector('.shell');
@@ -40,6 +58,34 @@ export const Sidebar = () => {
       else shell.classList.remove('sidebar-collapsed');
     }
   }, [isCollapsed]);
+
+  const courante =
+    organisations.find((o) => o.id === tenantCourant) ??
+    organisations.find((o) => o.principale) ??
+    organisations[0] ??
+    null;
+
+  const initiales = courante
+    ? courante.raison_sociale
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((m) => m[0]?.toUpperCase() ?? '')
+        .join('') || courante.raison_sociale.slice(0, 2).toUpperCase()
+    : '—';
+
+  /**
+   * Changer d'entreprise ne se fait pas par un lien : la sélection est
+   * mémorisée côté serveur, puis la page est rechargée pour que toutes les
+   * données soient ré-interrogées sur le nouveau tenant.
+   */
+  const basculer = (id: string) => {
+    if (!id || id === courante?.id) return;
+    changer(async () => {
+      const r = await selectionnerEntrepriseAction(id);
+      if (r.ok) router.refresh();
+    });
+  };
 
   return (
     <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`} aria-label="Navigation principale">
@@ -89,11 +135,46 @@ export const Sidebar = () => {
 
       <div className="sidebar-foot">
         <div className="tenant-card" style={{ padding: isCollapsed ? '8px' : '12px', justifyContent: 'center' }}>
-          <div className="tenant-avatar" aria-hidden="true" title="OrbitTech Services">OT</div>
+          <div className="tenant-avatar" aria-hidden="true" title={courante?.raison_sociale ?? "Aucune entreprise"}>
+            {initiales}
+          </div>
           {!isCollapsed && (
-            <div>
-              <div className="tenant-name">OrbitTech Services</div>
-              <div className="tenant-meta">Yaoundé · Plan Starter</div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              {courante ? (
+                <>
+                  {organisations.length > 1 ? (
+                    <label className="tenant-switch" title="Changer d'entreprise">
+                      <span className="sr-only">Entreprise courante</span>
+                      <select
+                        className="tenant-name"
+                        value={courante.id}
+                        disabled={enCours}
+                        onChange={(e) => basculer(e.target.value)}
+                      >
+                        {organisations.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.raison_sociale}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    <div className="tenant-name" title={courante.raison_sociale}>
+                      {courante.raison_sociale}
+                    </div>
+                  )}
+                  <div className="tenant-meta">
+                    {[courante.ville, courante.plan].filter(Boolean).join(" · ") || "Aucune ville renseignée"}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="tenant-name">Aucune entreprise</div>
+                  <div className="tenant-meta">
+                    <Link href="/onboarding">Créer mon entreprise</Link>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>

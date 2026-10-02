@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScannerController } from './scanner.controller.js';
+import { ScannerEvents } from './scanner.events.js';
 import { ScannerGateway } from './scanner.gateway.js';
 import { ScannerService } from './scanner.service.js';
 import { ExportService } from './export.service.js';
@@ -13,7 +14,7 @@ import { StorageModule } from '../storage/storage.module.js';
   // créerait une seconde instance avec son propre client objet.
   imports: [StorageModule],
   controllers: [ScannerController],
-  providers: [ScannerService, ScannerGateway, PrismaService, OcrService, SearchService, ExportService],
+  providers: [ScannerService, ScannerGateway, PrismaService, OcrService, SearchService, ExportService, ScannerEvents],
   exports: [ExportService, ScannerService],
 })
 export class ScannerModule {}

@@ -1,59 +1,58 @@
 ﻿"use server";
 
 import { auth } from "@/lib/auth";
+import { currentTenantId } from "@/lib/ged-api";
 
-export async function askAssistant(question: string) {
+/**
+ * Accès à l'assistant.
+ *
+ * Deux erreurs ont été corrigées ici :
+ *
+ * 1. L'en-tête `x-tenant-id` était figé à `test-tenant`. Un compte qui travaille
+ *    dans une autre entreprise interrogeait donc les données d'un autre tenant,
+ *    et l'API répondait 403. Il faut désormais l'entreprise réellement
+ *    sélectionnée.
+ * 2. Le jeton `test-token` était utilisé en repli **sans condition
+ *    d'environnement**. Il n'existe que pour le contournement de JwtAuthGuard
+ *    en développement : s'en servir en production revient à tenter de passer
+ *    outre l'authentification, et cela masquait la vraie erreur derrière un
+ *    message générique. En production, une session absente est une session
+ *    absente.
+ */
+async function appelAssistant(chemin: string, init: RequestInit = {}) {
   const session = await auth();
-  
-  // En dev local, on mock un token si l'auth n'est pas complÃ¨te.
-  
-  const token = session?.accessToken || "test-token"; 
+  const jeton = session?.accessToken;
+  if (!jeton) throw new Error("Session expirée : reconnectez-vous.");
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-  
-  const response = await fetch(`${apiUrl}/v1/assistant/advice`, {
-    method: "POST",
+  const tenantId = await currentTenantId();
+  const apiUrl = process.env.API_NEST_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+
+  const response = await fetch(`${apiUrl}${chemin}`, {
+    ...init,
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-      "x-tenant-id": "test-tenant"
+      Authorization: `Bearer ${jeton}`,
+      "x-tenant-id": tenantId,
+      ...(init.headers ?? {}),
     },
-    body: JSON.stringify({ question }),
   });
 
   if (!response.ok) {
-    const errText = await response.text();
-    console.error("Backend error:", response.status, errText);
+    const detail = (await response.text()).slice(0, 200);
+    console.error(`[assistant] ${chemin} -> ${response.status} ${detail}`);
     throw new Error(`Erreur API: ${response.status}`);
   }
-
   return response.json();
 }
 
-export async function getConversationHistory() {
-  const session = await auth();
-
-  // En dev local, on mock un token si l'auth n'est pas complÃ¨te.
-  
-  const token = session?.accessToken || "test-token";
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-
-  const response = await fetch(`${apiUrl}/v1/assistant/conversations`, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-      "x-tenant-id": "test-tenant",
-    },
-    cache: "no-store",
+export async function askAssistant(question: string) {
+  return appelAssistant("/v1/assistant/advice", {
+    method: "POST",
+    body: JSON.stringify({ question }),
   });
+}
 
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("Backend error history:", response.status, errText);
-    throw new Error(`Erreur API historique: ${response.status}`);
-  }
-
-  return response.json();
+export async function getConversationHistory() {
+  return appelAssistant("/v1/assistant/conversations");
 }

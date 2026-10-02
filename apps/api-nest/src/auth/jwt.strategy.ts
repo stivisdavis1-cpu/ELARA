@@ -28,12 +28,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // peut être rattaché à plusieurs organisations via `user_tenants`, seul
     // TenantInterceptor sait dire laquelle est demandée (et il vérifie
     // l'accès). Les contrôleurs lisent donc `@TenantId()`, pas `req.user.tenantId`.
-    return {
-      userId: payload.sub,
-      username: payload.preferred_username,
-      roles: this.normaliserRoles(payload),
-      email: payload.email,
-    };
+      return {
+        userId: payload.sub,
+        username: payload.preferred_username,
+        roles: this.normaliserRoles(payload),
+        email: payload.email,
+        givenName: payload.given_name,
+        familyName: payload.family_name,
+      };
   }
 
   /**

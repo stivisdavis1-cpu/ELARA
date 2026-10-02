@@ -101,13 +101,17 @@ export class SearchService {
    * recherche lexicale. On ne renvoie jamais de vecteur aléatoire — une
    * similarité calculée sur du bruit produit des résultats silencieusement
    * faux, ce qui est plus dangereux qu'une absence de résultat.
+   *
+   * `typeTexte` sépare ce qu'on indexe de ce qu'on cherche : le modèle
+   * d'embedding traite les deux comme deux tâches distinctes, et une question
+   * vectorisée comme un document se classe n'importe comment.
    */
-  async generateEmbedding(text: string): Promise<number[] | null> {
+  async generateEmbedding(text: string, typeTexte: 'document' | 'query' = 'document'): Promise<number[] | null> {
     try {
       const reponse = await fetch(`${this.aiUrl}/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: text }),
+        body: JSON.stringify({ input: text, input_type: typeTexte }),
         signal: AbortSignal.timeout(8000),
       });
       if (!reponse.ok) throw new Error(`HTTP ${reponse.status}`);
@@ -175,9 +179,21 @@ export class SearchService {
     };
   }
 
-  /** Fragment WHERE commun, les placeholders commençant à `depart`. */
-  private filtresSql(filtres: FiltresRecherche, depart: number): { sql: string; params: unknown[] } {
-    const conditions = ['d.tenant_id = $1', 'd.deleted_at IS NULL'];
+  /**
+   * Fragment WHERE commun, les placeholders de filtres commençant à `depart`.
+   *
+   * `tenantIndex` est explicite parce que les deux branches n'ordonnent pas leurs
+   * arguments pareil : la recherche lexicale place le tenant en `$1`, la
+   * recherche vectorielle place le vecteur en `$1` et le tenant en `$2`. Avec
+   * un `$1` codé en dur, la branche vectorielle comparait `tenant_id` à la
+   * chaîne du vecteur et ne renvoyait jamais la moindre ligne.
+   */
+  private filtresSql(
+    filtres: FiltresRecherche,
+    depart: number,
+    tenantIndex = 1,
+  ): { sql: string; params: unknown[] } {
+    const conditions = [`d.tenant_id = $${tenantIndex}`, 'd.deleted_at IS NULL'];
     const params: unknown[] = [];
     let index = depart;
 
@@ -270,9 +286,10 @@ export class SearchService {
     limit: number,
     filtres: FiltresRecherche,
   ): Promise<PassageCite[]> {
-    const vecteur = await this.generateEmbedding(question);
+    const vecteur = await this.generateEmbedding(question, 'query');
     if (!vecteur) return [];
-    const { sql: conditions, params } = this.filtresSql(filtres, 2);
+    // Vecteur en $1, tenant en $2, filtres à partir de $3.
+    const { sql: conditions, params } = this.filtresSql(filtres, 3, 2);
     try {
       const lignes = await this.prisma.$queryRawUnsafe(
         `SELECT c.id, c.document_id, c.page_number, c.content,

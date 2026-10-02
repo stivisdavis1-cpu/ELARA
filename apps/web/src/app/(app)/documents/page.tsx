@@ -1,7 +1,9 @@
 "use client";
 import React, { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import { FileText, Folder, X, Loader2, AlertTriangle, Search, Archive, Eye } from "lucide-react";
 import DocumentViewer from "../../../components/DocumentViewer";
+import { useEntetesApi } from "../../../components/TenantContext";
 
 interface DocRow {
   id: string;
@@ -41,6 +43,8 @@ function statusPill(statut: string) {
 }
 
 export default function DocumentsPage() {
+  const { data: session } = useSession();
+  const entetes = useEntetesApi();
   const [docs, setDocs] = useState<DocRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -56,9 +60,10 @@ export default function DocumentsPage() {
   const rechercher = async () => {
     const q = search.trim();
     if (!q) { setResultats(null); return; }
+    if (!session?.accessToken) return;
     setRechercheEnCours(true);
     try {
-      const res = await fetch(`/api/scanner/search?q=${encodeURIComponent(q)}`, { cache: 'no-store' });
+      const res = await fetch(`/api/scanner/search?q=${encodeURIComponent(q)}`, { headers: entetes, cache: 'no-store' });
       const corps = await res.json().catch(() => null);
       const data = corps?.data ?? corps;
       if (!res.ok) {
@@ -81,11 +86,12 @@ export default function DocumentsPage() {
   };
 
   const load = useCallback(async () => {
+    if (!session?.accessToken) { setLoading(false); return; }
     setLoading(true);
     let last: unknown = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const res = await fetch(API, { cache: 'no-store' });
+        const res = await fetch(API, { headers: entetes, cache: 'no-store' });
         if (!res.ok) throw new Error('Réponse inattendue (HTTP ' + res.status + ')');
         const payload = await res.json();
         const items = Array.isArray(payload?.data) ? payload.data : [];
@@ -111,7 +117,7 @@ export default function DocumentsPage() {
     setError('Impossible de charger les documents depuis la GED.');
     setDetail(last instanceof Error ? last.message : String(last));
     setLoading(false);
-  }, []);
+  }, [entetes, session?.accessToken]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => {

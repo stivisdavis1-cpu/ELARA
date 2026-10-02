@@ -1,6 +1,30 @@
 import NextAuth from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 
+/**
+ * Le jeton d'accès Keycloak expire en quelques minutes, la session NextAuth
+ * pendant des semaines.
+ *
+ * Sans cette vérification, un cookie de session resté valide suffisait à
+ * believed logged in: le lien « Se connecter » redirigeait vers le tableau de
+ * bord au lieu d'afficher le formulaire, et chaque appel à l'API échouait en
+ * 401. L'utilisateur se trouvait bloqué, sans aucun moyen de saisir ses
+ * identifiants à nouveau.
+ */
+function jetonPerime(accessToken: unknown): boolean {
+  if (typeof accessToken !== "string") return true;
+  const parties = accessToken.split(".");
+  if (parties.length < 2) return true;
+  try {
+    const charge = JSON.parse(Buffer.from(parties[1], "base64url").toString("utf8"));
+    if (typeof charge.exp !== "number") return true;
+    // Marge de 30 s : évite d'utiliser un jeton qui expire pendant l'appel.
+    return charge.exp * 1000 - 30_000 <= Date.now();
+  } catch {
+    return true;
+  }
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     CredentialsProvider({
@@ -88,11 +112,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.roles = (user as any).roles || []
         token.tenantId = (user as any).tenantId || null
       }
+      // Une session relancée sans nouvelle connexion : le jeton d'accès peut
+      // avoir expiré. On ne le conserve pas, ce qui ramène l'utilisateur vers
+      // l'écran de connexion au lieu de le laisser devant une application qui
+      // répond 401.
+      if (!user && jetonPerime(token.accessToken)) {
+        token.accessToken = undefined
+      }
       return token
     },
     async session({ session, token }) {
+      const accessToken = jetonPerime(token.accessToken) ? undefined : token.accessToken
       // @ts-ignore
-      session.accessToken = token.accessToken
+      session.accessToken = accessToken
       // @ts-ignore
       session.user.roles = (token as any).roles || []
       // @ts-ignore

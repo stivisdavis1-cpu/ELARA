@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useEntetesApi } from "./TenantContext";
 import { AlertTriangle, Check, Crop, Loader2, Lock, Pencil, Plus, Trash2, X } from "lucide-react";
 import { HoteNotifications } from "./page-actions";
 import OcrZonePicker from "./OcrZonePicker";
@@ -50,7 +51,6 @@ interface Reponse {
 }
 
 export default function DocumentElements({ documentId }: { documentId: string }) {
-  const { data: session } = useSession();
   const [data, setData] = useState<Reponse | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [chargement, setChargement] = useState(false);
@@ -69,13 +69,15 @@ export default function DocumentElements({ documentId }: { documentId: string })
     valeur: "",
   });
 
-  const headers = useCallback((): Record<string, string> => {
-    const tenantId = (session?.user as { tenantId?: string } | undefined)?.tenantId;
-    return tenantId ? { "x-tenant-id": tenantId } : {};
-  }, [session]);
+  const entetesApi = useEntetesApi();
+  const headers = useCallback((): Record<string, string> => entetesApi, [entetesApi]);
 
   const charger = useCallback(async () => {
     if (!documentId) return;
+    // Une ligne d'échec d'analyse n'existe pas en base : ses identifiants sont
+    // locaux. Interroger l'API avec eux répond 400 et affichait une erreur
+    // supplémentaire sur une fiche qui n'a jamais pu être enregistrée.
+    if (documentId.startsWith("erreur_")) return;
     setChargement(true);
     setErreur(null);
     try {

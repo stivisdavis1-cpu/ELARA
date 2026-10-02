@@ -57,6 +57,24 @@ export class AssistantService {
       this.logger.warn(`Impossible de récupérer le contexte financier pour ${tenantId}`, e);
     }
 
+    // 1 bis. Secteur d'activité et stratégie retenue.
+    //
+    // Le secteur est déjà porté par le tenant : sans lui, deux entreprises de
+    // secteurs différents reçoivent le même conseil générique. La stratégie
+    // était déjà écrite par le service CFO mais n'était lue par personne.
+    let secteur: string | null = null;
+    let strategie: string | null = null;
+    try {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { secteur: true }
+      });
+      secteur = tenant?.secteur ?? null;
+      strategie = (await this.cfoService.getStrategieTenant(tenantId))?.strategie ?? null;
+    } catch (e) {
+      this.logger.warn(`Secteur/stratégie illisibles pour ${tenantId}`, e);
+    }
+
     // 2. Récupération de la mémoire de l'entreprise (RAG)
     //
     // Avant : les 10 derniers enregistrements, sans pertinence ni citation.
@@ -116,6 +134,8 @@ export class AssistantService {
           tenant_id: tenantId,
           financial_data: contextData,
           company_memory: companyMemory,
+          secteur: secteur,
+          strategie: strategie,
           // Sources citables : le prompt impose de s'y référer.
           sources: recherche.passages.map((p) => ({
             document_id: p.document_id,

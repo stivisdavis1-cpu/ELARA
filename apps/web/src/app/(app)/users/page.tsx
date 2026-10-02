@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { UserPlus, UserMinus } from "lucide-react";
 import {
@@ -28,6 +28,59 @@ const PERMISSIONS: { module: string; roles: Record<string, boolean> }[] = [
   { module: "Clients & fournisseurs — relances", roles: { Administrateur: true, Utilisateur: true, "Assistant IA": true } },
   { module: "Gérer les utilisateurs et rôles", roles: { Administrateur: true, Utilisateur: false, "Assistant IA": false } },
 ];
+
+/**
+ * Lien d'activation remis à l'administrateur après une invitation.
+ *
+ * L'application n'envoie pas encore d'e-mail : le lien s'affiche donc ici pour
+ * être copié et transmis. Il n'est stocké que sous forme d'empreinte côté API,
+ * donc il ne peut être ni retrouvé ni réémis — il est valable une fois, jusqu'à
+ * la date indiquée.
+ */
+function AffichageActivation({ donnees, note }: { donnees: unknown; note?: string | null }) {
+  const [copie, setCopie] = useState(false);
+  const activation = donnees as { lien?: string; expire_le?: string } | null;
+  if (!activation?.lien) {
+    return note ? <p style={{ fontSize: "13px", color: "var(--text-dim)" }}>{note}</p> : null;
+  }
+
+  const expiration = activation.expire_le
+    ? new Date(activation.expire_le).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" })
+    : null;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      <p style={{ fontSize: "13px", color: "var(--text-dim)" }}>
+        Transmettez ce lien à la personne invitée. Elle y choisira son mot de passe.
+        {expiration ? <> Le lien est valable jusqu&apos;au {expiration} et ne fonctionne qu&apos;une fois.</> : null}
+      </p>
+      <div style={{ display: "flex", gap: "8px" }}>
+        <input
+          readOnly
+          value={activation.lien}
+          onFocus={(e) => e.currentTarget.select()}
+          style={{
+            flex: 1,
+            padding: "10px 12px",
+            borderRadius: "8px",
+            border: "1px solid #e2e8f0",
+            fontSize: "12px",
+            fontFamily: "ui-monospace, monospace",
+          }}
+        />
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            navigator.clipboard?.writeText(activation.lien!).then(() => setCopie(true)).catch(() => undefined);
+          }}
+        >
+          {copie ? "Copié" : "Copier"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const COLONNES = ROLES_UTILISATEUR.map((r) => r.libelle);
 
@@ -65,6 +118,11 @@ export default function UsersPage() {
   useEffect(() => { void charger(); }, [charger]);
   useRechargementDonnees(charger);
 
+  const isAdmin = useMemo(
+    () => Array.isArray(courant?.roles) && courant.roles.some((r) => /admin/i.test(r)),
+    [courant?.roles],
+  );
+
   const invitationsEnAttente = comptes.filter((c) => c.identite?.etat === "pending").length;
   const multiOrg = comptes.filter((c) => c.multi_organisation).length;
 
@@ -97,29 +155,34 @@ export default function UsersPage() {
             Gestion des accès — les identités et rôles effectifs de l&apos;espace.
           </p>
         </div>
-        <BarreActions
-          actions={[
-            {
-              libelle: "Inviter un compte",
-              variante: "primaire",
-              icone: <UserPlus className="w-3.5 h-3.5" />,
-              champs: [
-                { cle: "nom", label: "Nom complet", type: "texte", requis: true, colonne: "demi" },
-                { cle: "email", label: "Adresse e-mail professionnelle", type: "email", requis: true, colonne: "demi" },
-                {
-                  cle: "role",
-                  label: "Rôle",
-                  type: "select",
-                  requis: true,
-                  colonne: "pleine",
-                  defaut: "utilisateur_standard",
-                  options: ROLES_UTILISATEUR.map((r) => ({ valeur: r.cle, libelle: `${r.libelle} — ${r.description}` })),
-                },
-              ],
-              executer: (d) => inviterUtilisateurAction(d as { nom: string; email: string; role: string }),
-            },
-          ]}
-        />
+          <BarreActions
+            actions={
+              isAdmin
+                ? [
+                    {
+                      libelle: "Inviter un compte",
+                      variante: "primaire",
+                      icone: <UserPlus className="w-3.5 h-3.5" />,
+                      champs: [
+                        { cle: "nom", label: "Nom complet", type: "texte", requis: true, colonne: "demi" },
+                        { cle: "email", label: "Adresse e-mail professionnelle", type: "email", requis: true, colonne: "demi" },
+                        {
+                          cle: "role",
+                          label: "Rôle",
+                          type: "select",
+                          requis: true,
+                          colonne: "pleine",
+                          defaut: "utilisateur_standard",
+                          options: ROLES_UTILISATEUR.map((r) => ({ valeur: r.cle, libelle: `${r.libelle} — ${r.description}` })),
+                        },
+                      ],
+                      executer: (d) => inviterUtilisateurAction(d as { nom: string; email: string; role: string }),
+                      rendu: (resultat) => <AffichageActivation donnees={resultat.donnees} note={resultat.note} />,
+                    },
+                  ]
+                : []
+            }
+          />
       </div>
 
       {error && (

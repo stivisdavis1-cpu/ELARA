@@ -1,4 +1,4 @@
-fastapi
+﻿fastapi
 uvicorn
 pydantic
 python-dotenv
@@ -10,7 +10,8 @@ python-multipart
 pdfplumber
 Pillow
 pymupdf
-rapidocr_onnxruntime
+rapidocr-onnxruntime
+opencv-python-headless
 boto3
 openai
 python-docx

@@ -142,6 +142,19 @@ export class BusinessMemoryService {
   async getFacture(tenantId: string, id: string) {
     return this.prisma.facture.findFirst({ where: { id, tenant_id: tenantId }, include: { client: true, fournisseur: true, paiements: true } });
   }
+  /**
+   * Crée une facture, de façon idempotente.
+   *
+   * Un même document est analysé plusieurs fois dans une vie : le chemin
+   * synchrone le délègue aussi à la file d'analyse de fond, et un client
+   * rescane un document ou en réimporte une copie. Sans garde ici, chaque
+   * passage créait une nouvelle ligne : les créances gonflaient, le BFR
+   * dérive d'un document unique et aucun montant ne correspondait à une
+   * pièce identifiable.
+   *
+   * Deux clés, dans cet ordre : le document d'origine (preuve absolue), puis le
+   * numéro de facture (le même numéro émis par le même tiers est la même pièce).
+   */
   async createFacture(tenantId: string, data: {
     fournisseur_id?: string;
     client_id?: string;
@@ -156,6 +169,24 @@ export class BusinessMemoryService {
     statut?: string;
     document_id?: string;
   }) {
+    if (data.document_id) {
+      const depuisDocument = await this.prisma.facture.findFirst({
+        where: { tenant_id: tenantId, document_id: data.document_id },
+      });
+      if (depuisDocument) return depuisDocument;
+    }
+    if (data.numero) {
+      const depuisNumero = await this.prisma.facture.findFirst({
+        where: {
+          tenant_id: tenantId,
+          numero: data.numero,
+          ...(data.fournisseur_id ? { fournisseur_id: data.fournisseur_id } : {}),
+          ...(data.client_id ? { client_id: data.client_id } : {}),
+        },
+      });
+      if (depuisNumero) return depuisNumero;
+    }
+
     return this.prisma.facture.create({
       data: {
         tenant_id: tenantId,

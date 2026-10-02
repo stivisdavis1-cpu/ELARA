@@ -32,7 +32,7 @@ export class TenantInterceptor implements NestInterceptor {
     const userId = request.user?.userId;
     if (userId) {
       const allowed = await this.hasAccess(String(userId), String(tenantId));
-      if (!allowed && !this.isDevBypass(request)) {
+      if (!allowed) {
         throw new ForbiddenException("Accès refusé : l'utilisateur n'appartient pas à cette organisation");
       }
     }
@@ -47,27 +47,41 @@ export class TenantInterceptor implements NestInterceptor {
     return next.handle();
   }
 
-  /** L'utilisateur appartient-il à ce tenant, par l'un des deux liens ? */
-  private async hasAccess(userId: string, tenantId: string): Promise<boolean> {
-    const [membership, owner] = await Promise.all([
-      this.prisma.userTenant.findFirst({
-        where: { user_id: userId, tenant_id: tenantId },
-        select: { user_id: true },
-      }),
-      this.prisma.user.findFirst({
-        where: { id: userId, tenant_id: tenantId, deleted_at: null },
-        select: { id: true },
-      }),
-    ]);
-    return Boolean(membership || owner);
-  }
-
   /**
-   * En développement JwtAuthGuard injecte un utilisateur factice sans ligne
-   * en base : on ne peut pas exiger d'appartenance, sinon plus aucun écran
-   * ne chargerait sur une base fraîche.
+   * L'utilisateur a-t-il accès à ce tenant ?
+   *
+   * Deux précisions qui conditionnent toute la suite :
+   *
+   * 1. Le jeton porte le **sujet Keycloak** (`sub`), alors que `users.id` est
+   *    un UUID interne. Les deux identifiants n'appartiennent pas au même
+   *    espace : comparer le sujet à `users.id` ne peut jamais aboutir, et le
+   *    403 devient systématique pour tout compte issu de Keycloak. C'est
+   *    `users.keycloak_subject_id` qui fait le lien.
+   *
+   * 2. Un compte peut piloter plusieurs entreprises : son organisation
+   *    principale (`users.tenant_id`) plus une ligne par organisation
+   *    supplémentaire dans `user_tenants`. Le compte est donc autorisé si le
+   *    tenant demandé est *l'un* de ses tenant, pas seulement le principal.
    */
-  private isDevBypass(request: any): boolean {
-    return process.env.NODE_ENV !== 'production' && String(request.user?.userId) === '123';
+  private async hasAccess(subject: string, tenantId: string): Promise<boolean> {
+    const compte = await this.prisma.user.findFirst({
+      where: {
+        deleted_at: null,
+        OR: [{ keycloak_subject_id: subject }, { id: subject }],
+      },
+      select: { id: true, tenant_id: true },
+    });
+    if (!compte) return false;
+
+    // Organisation principale.
+    if (compte.tenant_id === tenantId) return true;
+
+    // Organisations supplémentaires : c'est ce qui permet à un même compte de
+    // piloter plusieurs entreprises avec une seule identité.
+    const membre = await this.prisma.userTenant.findUnique({
+      where: { user_id_tenant_id: { user_id: compte.id, tenant_id: tenantId } },
+      select: { user_id: true },
+    });
+    return Boolean(membre);
   }
 }

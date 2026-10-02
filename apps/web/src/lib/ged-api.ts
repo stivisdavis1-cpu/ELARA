@@ -1,6 +1,8 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
+import { COOKIE_TENANT } from "@/lib/tenant";
 
 export interface ApiEnvelope<T> {
   data: T | null;
@@ -157,16 +159,61 @@ export interface TaxAuditResult {
 }
 
 /**
- * Tenant interrogeé par cette session. Le claim du jeton fait foi ; en
- * développement, on retombe sur `test-tenant` comme l'a toujours fait le
- * bypass de JwtAuthGuard, sinon l'API répond 403 sur une base fraîche.
+ * Entreprise sur laquelle travaille la session.
+ *
+ * Un compte peut piloter plusieurs entreprises : la demande vient donc de trois
+ * endroits, par ordre d'autorité décroissante — le choix explicite de
+ * l'utilisateur, puis le claim du jeton si Keycloak en porte un, et enfin
+ * l'organisation principale du compte.
+ *
+ * La liste des organisations est récupérée par un appel direct et non par
+ * `gedRequest` : ce dernier consulte cette fonction, qui appellerait donc
+ * `gedRequest` à son tour, sans fin.
  */
 export async function currentTenantId(): Promise<string> {
+  const tenantId = await tenantCourantOptionnel();
+  if (!tenantId) throw new Error("Aucune entreprise sélectionnée pour ce compte.");
+  return tenantId;
+}
+
+/**
+ * Entreprise courante, ou `null` si le compte n'en a aucune.
+ *
+ * `gedRequest` s'en sert pour l'en-tête `x-tenant-id` : cet en-tête doit
+ * pouvoir manquer, sinon un compte créé directement dans Keycloak restait
+ * enfermé — l'appel `POST /v1/mes-organisations`, qui crée l'entreprise, était
+ * lui-même rejeté avant d'atteindre l'API. L'API décide alors, route par route,
+ * si une entreprise est exigée.
+ */
+export async function tenantCourantOptionnel(): Promise<string | null> {
+  const cookie = (await cookies()).get(COOKIE_TENANT)?.value?.trim();
+  if (cookie) return cookie;
+
   const session = await auth();
   const portee = session?.tenantId?.trim();
   if (portee) return portee;
-  if (process.env.NODE_ENV !== "production") return "test-tenant";
-  throw new Error("Aucun tenant dans la session : reconnectez-vous.");
+
+  return organisationPrincipale();
+}
+
+/** Identifiant de l'organisation principale, ou null si le compte n'en a aucune. */
+async function organisationPrincipale(): Promise<string | null> {
+  try {
+    const session = await auth();
+    const jeton = session?.accessToken;
+    if (!jeton) return null;
+    const apiUrl = process.env.API_NEST_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+    const r = await fetch(`${apiUrl}/v1/mes-organisations`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${jeton}` },
+    });
+    if (!r.ok) return null;
+    const corps = (await r.json()) as ApiEnvelope<Array<{ id: string; principale: boolean }>>;
+    const liste = corps?.data ?? [];
+    return liste.find((o) => o.principale)?.id ?? liste[0]?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -180,34 +227,29 @@ async function gedRequest<T>(endpoint: string, init: RequestInit = {}): Promise<
   const session = await auth();
   const apiUrl = process.env.API_NEST_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-  // Le jeton `test-token` n'existe que pour le bypass de JwtAuthGuard en
-  // développement. En production, réessayer avec ce jeton en cas de 401
-  // reviendrait à contourner l'authentification : on échoue franchement.
-  const jetons = session?.accessToken
-    ? process.env.NODE_ENV !== "production"
-      ? [session.accessToken, "test-token"]
-      : [session.accessToken]
-    : process.env.NODE_ENV !== "production"
-      ? ["test-token"]
-      : [];
+  // Un seul jeton est jamais utilisé : celui de la session réelle. Réessayer
+  // avec un jeton de secours après un 401 reviendrait à contourner
+  // JwtAuthGuard ; en développement comme en production, l'échec est franc.
+  const jeton = session?.accessToken;
+  if (!jeton) throw new Error("Session expirée : reconnectez-vous.");
 
-  if (!jetons.length) throw new Error("Session expirée : reconnectez-vous.");
+  // L'en-tête n'est envoyé que si le compte a une entreprise. L'API refuse
+  // elle-même les routes qui en exigent une, avec le message attendu.
+  const tenantId = await tenantCourantOptionnel();
 
-  const attempt = async (token: string) =>
-    fetch(`${apiUrl}${endpoint}`, {
-      ...init,
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        "x-tenant-id": await currentTenantId(),
-        ...init.headers,
-      },
-    });
+  const response = await fetch(`${apiUrl}${endpoint}`, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${jeton}`,
+      ...(tenantId ? { "x-tenant-id": tenantId } : {}),
+      ...init.headers,
+    },
+  });
 
-  let response = await attempt(jetons[0]);
-  if (response.status === 401 && jetons.length > 1) {
-    response = await attempt(jetons[1]);
+  if (response.status === 401) {
+    throw new Error("Session expirée : reconnectez-vous.");
   }
 
   if (!response.ok) {
@@ -226,10 +268,16 @@ async function gedRequest<T>(endpoint: string, init: RequestInit = {}): Promise<
 }
 
 /** Échec attendu d'une écriture : remonté tel quel à l'utilisateur. */
-export interface ResultatAction {
-  ok: boolean;
-  message: string;
-}
+  export interface ResultatAction {
+    ok: boolean;
+    message: string;
+    /** Précision à afficher alors qu'aucune donnée n'est renvoyée. */
+    note?: string | null;
+    // Données complémentaires affichées par l'écran qui a déclenché l'action
+    // (lien d'activation, valeurs enregistrées…). Absentes de la plupart des
+    // actions, qui n'ont rien à montrer de plus qu'un message.
+    donnees?: unknown;
+  }
 
 /**
  * Enveloppe les mutations pour qu'un échec remonte à l'écran au lieu de
@@ -936,35 +984,49 @@ export async function getSecuriteData(): Promise<SecuriteData> {
 // UTILISATEURS & RÔLES
 // ============================================================
 
-export interface CompteUtilisateur {
-  id: string;
-  email: string;
-  nom: string;
-  role: string;
-  multi_organisation: boolean;
-  created_at: string;
-  deja_existant?: boolean;
-  identite?: { fournisseur: string; etat: string; sujet?: string; raison?: string; code?: number };
-}
+    export interface CompteUtilisateur {
+      id: string;
+      email: string;
+      nom: string;
+      role: string;
+      multi_organisation: boolean;
+      created_at: string;
+      deja_existant?: boolean;
+      identite?: { fournisseur: string; etat: string; sujet?: string; raison?: string; code?: number };
+      // Lien d'activation renvoyé une seule fois, à la création de l'invitation.
+      activation?: { lien: string; expire_le: string; duree_jours: number } | null;
+      /** Précision affichée quand aucun lien n'est nécessaire. */
+      note?: string | null;
+    }
 
 
 export async function getUtilisateurs() {
   return gedRequest<CompteUtilisateur[]>("/v1/utilisateurs");
 }
 
-export async function inviterUtilisateur(input: { nom: string; email: string; role: string }): Promise<ResultatAction> {
-  return mutation(
-    () => gedRequest<CompteUtilisateur>("/v1/utilisateurs/inviter", { method: "POST", body: JSON.stringify(input) }),
-    (u) =>
-      u.deja_existant
-        ? `${u.email} existe déjà : rattaché à cette organisation.`
-        : u.identite?.etat === "provisionne"
-          ? `${u.email} invité et provisionné dans Keycloak.`
-          : u.identite?.etat === "en_attente"
-            ? `${u.email} enregistré. L'API d'administration Keycloak n'est pas configurée : le mot de passe reste à définir.`
-            : `${u.email} enregistré.`,
-  );
-}
+    export async function inviterUtilisateur(input: { nom: string; email: string; role: string }): Promise<ResultatAction> {
+      try {
+        const invite = await gedRequest<CompteUtilisateur>("/v1/utilisateurs/inviter", {
+          method: "POST",
+          body: JSON.stringify(input),
+        });
+        // Le lien d'activation n'existe qu'ici : l'API n'en conserve que
+        // l'empreinte. Il est donc renvoyé à l'écran pour être transmis, et
+        // l'invité définit lui-même son mot de passe.
+        return {
+          ok: true,
+          message: invite.deja_existant
+            ? `${invite.email} existe déjà : rattaché à cette organisation.`
+            : invite.activation
+              ? `${invite.email} invité. Transmettez-lui le lien d'activation ci-dessous.`
+              : `${invite.email} invité et rattaché à cette organisation.`,
+          donnees: invite.activation ?? null,
+          note: invite.note ?? null,
+        };
+      } catch (e) {
+        return { ok: false, message: e instanceof Error ? e.message : "L'invitation a échoué." };
+      }
+    }
 
 export async function changerRoleUtilisateur(id: string, role: string): Promise<ResultatAction> {
   return mutation(
@@ -1125,6 +1187,51 @@ export interface ReglagesData {
   usage: UsageReglages | null;
   integrations: Integration[];
   error: string | null;
+}
+
+/**
+ * Entreprises accessibles au compte connecté.
+ *
+ * Un compte n'est pas attaché à une seule entreprise : l'API renvoie son
+ * organisation principale et celles auxquelles il est rattaché, avec son rôle
+ * dans chacune. L'interface s'en sert pour nommer l'espace courant et proposer
+ * un sélecteur, sans jamais inventer un nom d'entreprise.
+ */
+export interface Organisation {
+  id: string;
+  raison_sociale: string;
+  secteur: string | null;
+  pays: string | null;
+  ville: string | null;
+  devise: string | null;
+  plan: string | null;
+  role: string;
+  principale: boolean;
+}
+
+export async function getMesOrganisations(): Promise<Organisation[]> {
+  return gedRequest<Organisation[]>("/v1/mes-organisations");
+}
+
+/**
+ * Crée une entreprise et y rattache le compte connecté.
+ *
+ * C'est l'action de démarrage du parcours : sans entreprise, un compte n'a
+ * accès à rien — pas même à l'onboarding, qui est lui-même protégé par le
+ * tenant. Le serveur répond 201 avec l'organisation créée, dont l'identifiant
+ * sert aussitôt de tenant courant.
+ */
+export async function creerOrganisation(input: {
+  raison_sociale: string;
+  secteur?: string;
+  pays?: string;
+  ville?: string;
+  devise?: string;
+  systeme_comptable?: string;
+  nom?: string;
+  email?: string;
+}): Promise<{ organisation: { id: string; raison_sociale: string }; compte: { id: string; email: string } }> {
+  return gedRequest("/v1/mes-organisations", { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function getProfilTenant() {

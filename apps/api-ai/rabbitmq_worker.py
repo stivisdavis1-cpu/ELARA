@@ -274,15 +274,33 @@ Réponds UNIQUEMENT avec un JSON strict respectant cette structure exacte :
   "acteurs_impliques": [
     {{ "nom": "...", "role": "Fournisseur, Client, Employé...", "identifiant": "SIRET/NIU..." }}
   ],
+  "emetteur_nom": "Le nom de l'entreprise qui ÉMET le document (celle dont le logo/raison sociale est en tête)",
+  "emetteur_role": "client | fournisseur | interne | inconnu",
+  "tiers_nom": "Le nom de l'entreprise qui REÇOIT le document (celle dont le nom figure en 'Client', 'Destinataire', 'Pour')",
+  "tiers_role": "client | fournisseur | interne | inconnu",
+  "numero_facture": "Le numéro de facture / de pièce, exactement tel qu'imprimé. null si absent.",
+  "lignes_ou_montants": [
+    {{ "libelle": "...", "montant": 0.0 }}
+  ],
   "dates_cles": [
     {{ "date": "YYYY-MM-DD", "signification": "Date d'émission, échéance..." }}
   ],
   "mots_cles_indexation": ["mot1", "mot2", "mot3"],
   "resume_document": "Résumé court",
   "montant_ht": 0.0,
+  "montant_tva": 0.0,
   "montant_ttc": 0.0,
+  "taux_tva": 0.0,
+  "devise": "XAF | EUR | USD | ...",
+  "operation": "vente | achat | paiement_recu | paiement_effectue | salaire | taxe | autre",
   "niveau_risque_fraude": 0
 }}
+RÈGLES DE LECTURE, elles déterminent les chiffres du tableau de bord du client :
+- `emetteur_role` est le rôle de l'émetteur PAR RAPPORT À L'ENTREPRISE qui lit ce document. Si l'émetteur est l'entreprise elle-même, son rôle est `interne`, et c'est le `tiers_role` qui indique si elle vend (`client`) ou achète (`fournisseur`).
+- Une facture émise par l'entreprise à un client est une VENTE : elle crée une créance. Une facture émise par un fournisseur à l'entreprise est un ACHAT : elle crée une dette.
+- Ne confonds jamais la position de l'émetteur avec celle du tiers. C'est la distinction la plus importante de tout le document.
+- `montant_tva` et `taux_tva` valent 0.0 et non null quand la TVA est explicitement mentionnée à 0 ou absente ; mets null seulement si le document ne permet pas de le dire.
+- Si un champ n'est pas lisible, mets null. N'invente ni n'extrapoles jamais une valeur.
 Texte: {clean_text[:2500]}
 """
     raw = _llm_generate(prompt, json_mode=True, max_tokens=2048).strip()
@@ -317,10 +335,6 @@ Texte: {clean_text[:2500]}
 
     # Schéma structuré attendu par api-nest (handleDocumentProcessed)
     acteurs_list = data.get("acteurs_impliques", [])
-    fournisseur = next(
-        (a for a in acteurs_list if "fournisseur" in str(a.get("role", "")).lower()),
-        acteurs_list[0] if acteurs_list else {},
-    )
     dates_cles = data.get("dates_cles", [])
 
     def _valid_date(value):
@@ -335,6 +349,19 @@ Texte: {clean_text[:2500]}
             except ValueError:
                 continue
         return None
+
+    def _role(value):
+        """Normalise un rôle en 'client' | 'fournisseur' | 'interne' | 'inconnu'."""
+        s = str(value or "").strip().lower()
+        if s.startswith("client"):
+            return "client"
+        if s.startswith("fournisseur") or s.startswith("vendeur"):
+            return "fournisseur"
+        if s.startswith("interne") or s.startswith("employe") or s.startswith("salari"):
+            return "interne"
+        if s.startswith("inconnu"):
+            return "inconnu"
+        return "inconnu"
 
     date_emission = next(
         (
@@ -352,16 +379,74 @@ Texte: {clean_text[:2500]}
         ),
         None,
     )
+    # Sens de l'opération, déduit de l'émetteur ET du tiers.
+    #
+    # L'ancien code cherchait un acteur dont le rôle contenait « fournisseur » et
+    # traitait tout document financier comme une facture d'achat. Conséquence :
+    # les factures émises par l'entreprise à ses clients étaient enregistrées
+    # comme des dettes fournisseurs, donc les créances clients restaient
+    # structurellement à zéro et le tableau de bord CFO ne pouvait pas bouger.
+    emetteur_nom = str(data.get("emetteur_nom") or "").strip() or None
+    tiers_nom = str(data.get("tiers_nom") or "").strip() or None
+    emetteur_role = _role(data.get("emetteur_role"))
+    tiers_role = _role(data.get("tiers_role"))
+    operation = str(data.get("operation") or "autre").strip().lower()
+
+    # Repli sur les acteurs quand l'émetteur n'a pas été isolé.
+    if not emetteur_nom and acteurs_list:
+        for acteur in acteurs_list:
+            role = str(acteur.get("role", "")).lower()
+            if "fournisseur" in role or "client" in role:
+                emetteur_nom = (acteur.get("nom") or "").strip() or None
+                emetteur_role = _role(role)
+                break
+    if not tiers_nom and len(acteurs_list) > 1:
+        tiers_nom = (acteurs_list[1].get("nom") or "").strip() or None
+        if tiers_role == "inconnu":
+            tiers_role = _role(acteurs_list[1].get("role"))
+
+    # `vente` = l'entreprise facture (créance client). `achat` = l'entreprise
+    # reçoit une facture (dette fournisseur).
+    if operation in ("vente", "achat"):
+        sens = operation
+    elif tiers_role == "client" and emetteur_role == "interne":
+        sens = "vente"
+    elif emetteur_role == "fournisseur" and tiers_role in ("client", "interne"):
+        sens = "achat"
+    elif emetteur_role == "client" and tiers_role == "fournisseur":
+        sens = "vente"
+    else:
+        sens = "inconnu"
+
+    # Le tiers de l'opération : celui qui n'est pas l'entreprise elle-même.
+    # En achat, c'est l'émetteur (le fournisseur) qui est le tiers ; sinon
+    # c'est le destinataire.
+    tiers = emetteur_nom if sens == "achat" else tiers_nom
+    tiers_identifiant = None
+    for acteur in acteurs_list:
+        nom_acteur = (acteur.get("nom") or "").strip()
+        if tiers and nom_acteur and nom_acteur.lower() == tiers.lower():
+            tiers_identifiant = acteur.get("identifiant")
+            break
+
     extraction = {
-        "nom_fournisseur": fournisseur.get("nom"),
-        "niu_fournisseur": fournisseur.get("identifiant"),
+        "sens": sens,
+        "operation": operation,
+        "emetteur_nom": emetteur_nom,
+        "emetteur_role": emetteur_role,
+        "tiers_nom": tiers,
+        "tiers_role": tiers_role,
+        "tiers_identifiant": tiers_identifiant,
+        "nom_fournisseur": tiers,
+        "niu_fournisseur": tiers_identifiant,
         "rccm_fournisseur": None,
-        "numero_facture": None,
+        "numero_facture": (str(data.get("numero_facture")).strip() or None) if data.get("numero_facture") else None,
         "categorie": type_doc,
         "montant_ht": data.get("montant_ht"),
-        "taux_tva": None,
-        "montant_tva": None,
+        "taux_tva": data.get("taux_tva"),
+        "montant_tva": data.get("montant_tva"),
         "montant_total": data.get("montant_ttc") or data.get("montant_ht"),
+        "devise": data.get("devise"),
         "date_emission": date_emission,
         "date_echeance": date_echeance,
         "niveau_risque_fraude": data.get("niveau_risque_fraude") or 0,
@@ -374,6 +459,48 @@ Texte: {clean_text[:2500]}
 # ---------------------------------------------------------------------------
 # Publication des résultats
 # ---------------------------------------------------------------------------
+def _score_confiance(extraction: dict) -> float:
+    """Confiance du document, calculée sur ce qui a RÉELLEMENT été lu.
+
+    Le score était codé en dur à 0.95. Conséquence : le seuil de 0.85 de
+    l'API était toujours franchi, donc tout document était marqué « validé
+    automatiquement » — y compris une extraction dégradée ou vide. La
+    validation humaine ne se déclenchait jamais, et une écriture comptable
+    pouvait être créée à partir d'une lecture approximative.
+
+    On compte donc les éléments réellement présents :
+      - identité de la pièce (type, et un nom de tiers) : sans quoi on ne sait
+        même pas de quoi il s'agit ;
+      - le montant ;
+      - la date d'émission ;
+      - le sens de l'opération (vente / achat), qui décide si l'écriture est une
+        créance ou une dette.
+    Un document sans montant ni tiers tombe sous le seuil, donc part en revue.
+    """
+    def _present(*keys) -> bool:
+        for key in keys:
+            value = extraction.get(key)
+            if value is None:
+                continue
+            if isinstance(value, str) and not value.strip():
+                continue
+            return True
+        return False
+
+    if not _present("type_document", "categorie"):
+        return 0.0
+
+    criteres = (
+        _present("tiers_nom", "nom_fournisseur"),
+        _present("montant_total", "montant_ttc", "montant_ht"),
+        _present("date_emission"),
+        extraction.get("sens") in ("vente", "achat"),
+    )
+    lus = sum(1 for c in criteres if c)
+    base = 0.40 + 0.15 * lus
+    return round(min(base, 0.95), 2)
+
+
 def _publish_progress(doc_id: str, tenant_id: str, progress: int, message: str) -> None:
     payload = {
         "pattern": "scanner.document.progress",
@@ -427,7 +554,7 @@ def process_document(ch, method, properties, body):
             "tenant_id": tenant_id,
             "status": "COMPLETED",
             "type_document": (extraction_data.get("categorie") or "AUTRE").lower(),
-            "score_confiance": 0.95,
+            "score_confiance": _score_confiance(extraction_data),
             "extraction": extraction_data,
             "extracted_data": display_data,
             "ocr_text": extracted_text,

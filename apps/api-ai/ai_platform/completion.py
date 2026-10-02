@@ -220,10 +220,17 @@ def complete_json(
 
 
 def _deterministic_embedding(text: str) -> list[float]:
-    """Embedding déterministe 768-d de secours (aucune dépendance externe).
+    """Vecteur factice 768-d, déterministe, DÉRIVÉ D'UN HACHAGE.
 
-    Génère un vecteur stable à partir d'un hash du texte : deux textes
-    identiques produisent toujours le même vecteur (utile pour le dev local).
+    ⚠️ Ce vecteur n'a AUCUNE relation sémantique avec le texte. Deux documents
+    sans rapport ont autant de chances d'être proches que deux documents
+    proches. Il ne sert qu'à remplir une colonne pour que le développement
+    local ne casse pas ; il ne doit jamais être persisté ni interrogé.
+
+    Conséquence si on l'acceptait en production : la recherche sémantique
+    renverrait des passages arbitraires, avec des scores de similarité
+    crédibles — le pire mode de défaillance possible pour un outil qui prétend
+    citer ses sources. D'où le choix de renvoyer `None` par défaut.
     """
     dim = EMBEDDING_DIM
     vector: list[float] = []
@@ -233,19 +240,47 @@ def _deterministic_embedding(text: str) -> list[float]:
     return vector
 
 
-def embed(text: str) -> list[float]:
-    """Génère un embedding via Ollama (nomic-embed-text) avec repli déterministe."""
+EMBEDDING_PREFIXES = {
+    "document": "search_document: ",
+    "query": "search_query: ",
+}
+
+
+def embed(text: str, allow_deterministic_fallback: bool = False, input_type: str = "document") -> list[float] | None:
+    """Génère un embedding via Ollama (nomic-embed-text).
+
+    Renvoie `None` si aucun service d'embedding ne répond. L'appelant bascule alors
+    en recherche lexicale, ce qui est le comportement correct : une recherche
+    plein texte juste vaut mieux qu'une similarité calculée sur du bruit.
+
+    Le repli par hachage existe encore, mais seulement si on le demande
+    explicitement (`allow_deterministic_fallback=True`) : c'est un outil de mise
+    au point, pas une stratégie de production. Par défaut il est désactivé, donc
+    un embedding sans sens ne peut pas se glisser en base par inadvertance.
+
+    `input_type` distingue ce que l'on indexe de ce que l'on cherche.
+    `nomic-embed-text` est entraîné sur deux tâches distinctes et n'obtient de
+    bonnes similarités qu'avec son préfixe : sans lui, un texte et sa question
+    se retrouvent dans des espaces non comparables, les scores tombent vers 0 et
+    le classement devient quelconque — le pire résultat possible, car il a
+    l'air d'une réponse.
+    """
+    prefixe = EMBEDDING_PREFIXES.get(input_type, EMBEDDING_PREFIXES["document"])
     try:
         response = requests.post(
             f"{OLLAMA_URL}/api/embeddings",
-            json={"model": EMBEDDING_MODEL, "prompt": text[:8000]},
+            json={"model": EMBEDDING_MODEL, "prompt": prefixe + text[:8000]},
             timeout=float(os.environ.get("EMBEDDING_TIMEOUT", "30")),
         )
         response.raise_for_status()
         embedding = response.json().get("embedding")
         if embedding:
-            logger.info(f"[Embeddings] Générés via Ollama ({len(embedding)} dimensions)")
+            logger.info(f"[Embeddings] Générés via Ollama ({len(embedding)} dimensions, type={input_type})")
             return embedding
     except Exception as exc:  # noqa: BLE001
-        logger.warning(f"[Embeddings] Ollama indisponible, repli déterministe : {exc}")
-    return _deterministic_embedding(text)
+        logger.warning(f"[Embeddings] Ollama indisponible, aucune sémantique : {exc}")
+
+    if allow_deterministic_fallback:
+        logger.warning("[Embeddings] Repli factice activé explicitement : vecteur sans valeur sémantique.")
+        return _deterministic_embedding(text)
+    return None
