@@ -3,8 +3,8 @@ import "./globals.css";
 import NextAuthProvider from "@/components/NextAuthProvider";
 
 export const metadata: Metadata = {
-  title: "Elara — Design System 2.0",
-  description: "Plateforme Avancé et Gestion d'entreprise",
+  title: "Elara — Le cerveau numérique des PME",
+  description: "Plateforme de gestion et d'assistant financier pour les PME et cabinets comptables d'Afrique : scanner, facturation, indicateurs et IA.",
 };
 
 export default function RootLayout({

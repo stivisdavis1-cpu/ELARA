@@ -655,3 +655,42 @@ model Employe {
   @@index([tenant_id])
   @@map("employes")
 }
+
+// ─── Pré-lancement marketing ───────────────────────────────────────────────
+// Ces deux tables n'appartiennent à aucun tenant : un visiteur des formulaires
+// publics n'a encore ni compte ni entreprise. La position dans la file n'est
+// pas stockée : elle se recalcule à la lecture pour rester fidèle à l'état
+// réel (rang d'arrivée + boost de parrainage).
+
+/// Une inscription à la liste d'attente. `code_parrain` est généré côté
+/// serveur (crypto, jamais `Math.random`) : le lien de partage en dépend.
+model ListeAttente {
+  id           String    @id @default(uuid())
+  prenom       String
+  email        String    @unique // normalisé en minuscules avant écriture
+  entreprise   String?
+  code_parrain String    @unique
+  parrain_id   String? // NULL quand le code transmis n'existe pas
+  created_at   DateTime  @default(now())
+
+  parrain ListeAttente?  @relation("Parrainage", fields: [parrain_id], references: [id], onDelete: SetNull)
+  invites ListeAttente[] @relation("Parrainage")
+
+  @@index([parrain_id])
+  @@map("liste_attente")
+}
+
+/// Une demande de démonstration déposée depuis la landing.
+model DemandeDemo {
+  id         String   @id @default(uuid())
+  prenom     String
+  nom        String
+  email      String
+  telephone  String
+  entreprise String
+  formule    String // l'un des libellés exacts du sélecteur du formulaire
+  message    String?
+  created_at DateTime @default(now())
+
+  @@map("demandes_demo")
+}

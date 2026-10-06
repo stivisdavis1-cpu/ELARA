@@ -22,6 +22,7 @@ import { ValidationModule } from './validation/validation.module.js';
 import { UtilisateursModule } from './utilisateurs/utilisateurs.module.js';
 import { RhModule } from './rh/rh.module.js';
 import { ReglagesModule } from './reglages/reglages.module.js';
+import { MarketingModule } from './marketing/marketing.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,21 @@ import { ReglagesModule } from './reglages/reglages.module.js';
           limit: 100,
         },
       ],
+      // Derrière le proxy Next.js (rewrites) ou l'ingress, l'IP du visiteur
+      // n'est pas `req.ip` (qui verrait toujours le proxy) : elle arrive dans
+      // `x-forwarded-for`. On retient la DERNIÈRE adresse de la liste, celle
+      // ajoutée par le proxy de confiance le plus proche. Limite assumée :
+      // sans proxy qui complète l'en-tête, un client maître de celui-ci peut
+      // changer de clé de limitation — d'où le pot de miel et l'e-mail unique
+      // en base, qui restent les barrières réelles.
+      getTracker: (req: any) => {
+        const brut = req?.headers?.['x-forwarded-for'];
+        const liste = (Array.isArray(brut) ? brut.join(',') : (brut ?? ''))
+          .split(',')
+          .map((morceau: string) => morceau.trim())
+          .filter(Boolean);
+        return liste[liste.length - 1] || req?.ip || req?.socket?.remoteAddress || 'inconnu';
+      },
     }),
     AuthModule,
     TenantModule,
@@ -50,6 +66,7 @@ import { ReglagesModule } from './reglages/reglages.module.js';
     UtilisateursModule,
     RhModule,
     ReglagesModule,
+    MarketingModule,
   ],
   controllers: [AppController],
   providers: [

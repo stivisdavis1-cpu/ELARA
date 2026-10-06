@@ -9,12 +9,16 @@ export default auth((req: any) => {
   // encore de session. `/onboarding` en revanche reste protégé — il ne sert
   // qu'un compte déjà connecté, et le rendre public afficherait un formulaire de
   // création d'entreprise à un visiteur anonyme.
-  const publicRoutes = ['/', '/login', '/register', '/prelancement', '/activer']
+  const publicRoutes = ['/', '/login', '/register', '/prelancement', '/activer', '/confidentialite']
   const estPublic = publicRoutes.some(
     route =>
       req.nextUrl.pathname === route ||
       req.nextUrl.pathname.startsWith('/prelancement') ||
-      req.nextUrl.pathname.startsWith('/activer'),
+      req.nextUrl.pathname.startsWith('/activer') ||
+      // `/r/CODE` : lien de parrainage partagé, ouvert sans session. La
+      // comparaison « /r/ » (avec slash) évite de rendre public « /report ».
+      req.nextUrl.pathname === '/r' ||
+      req.nextUrl.pathname.startsWith('/r/'),
   )
 
   // Un cookie de session ne suffit pas : sans jeton d'accès valide, l'API

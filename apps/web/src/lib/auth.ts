@@ -54,6 +54,7 @@ async function rafraichirJeton(token: any) {
     console.error("[AUTH] Erreur Refresh Token:", error);
     return {
       ...token,
+      accessToken: undefined,
       error: "RefreshAccessTokenError",
     };
   }

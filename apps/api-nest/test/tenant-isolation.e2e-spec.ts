@@ -18,7 +18,9 @@ describe('Isolation multi-tenant (E2E)', () => {
 
   it("refuse avec code d'auth/tenant cohérent et n'expose pas de stack trace", async () => {
     const res = await request(app.getHttpServer())
-      .get('/v1/scanner/documents/non-existent')
+      // Route existante et protégée (liste des documents) : le garde s'applique
+      // avant le handler, donc un jeton invalide doit produire 401/403.
+      .get('/v1/scanner/documents')
       .set('Authorization', 'Bearer dummy')
       .set('x-tenant-id', 'tenant-a');
     expect([401, 403]).toContain(res.status);
