@@ -14,10 +14,24 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    const message =
-      exception instanceof HttpException
-        ? exception.getResponse()
-        : 'Internal server error';
+    // ERREURS 500 MASQUÉES : le détail (stack, requête SQL, chemins disque)
+    // part au log serveur UNIQUEMENT. Le client reçoit un identifiant de
+    // corrélation pour le support, jamais le contenu de l'exception.
+    if (!(exception instanceof HttpException)) {
+      const ref = `ERR-${Date.now().toString(36).toUpperCase()}`;
+      console.error(`[AllExceptionsFilter] ${ref}`, exception);
+      response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
+        data: null,
+        error: 'Erreur interne. Référence : ' + ref,
+        meta: {
+          timestamp: new Date().toISOString(),
+          path: request.url,
+        },
+      });
+      return;
+    }
+
+    const message = exception.getResponse();
 
     const errorMessage = typeof message === 'string' ? message : (message as any).message || message;
 

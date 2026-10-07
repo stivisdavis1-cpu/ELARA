@@ -1,6 +1,12 @@
-const url = "http://localhost:8080";
-const adminUser = "admin";
-const adminPassword = "admin";
+const url = process.env.KEYCLOAK_URL || "http://localhost:8080";
+const adminUser = process.env.KEYCLOAK_ADMIN || "admin";
+// JAMAIS de mot de passe en dur : le seed local lit l'env (même valeur que
+// KEYCLOAK_ADMIN_PASSWORD du compose). Sans elle, échec explicite.
+const adminPassword = process.env.KEYCLOAK_ADMIN_PASSWORD;
+if (!adminPassword) {
+  console.error("KEYCLOAK_ADMIN_PASSWORD manquant : sourcez votre .env (voir .env.example).");
+  process.exit(1);
+}
 
 async function getAdminToken() {
   const response = await fetch(`${url}/realms/master/protocol/openid-connect/token`, {
@@ -48,7 +54,8 @@ async function createClient(token) {
       clientId: "elara-web",
       enabled: true,
       publicClient: false,
-      secret: "elara-web-secret-123",
+      // Secret du client : même valeur que KEYCLOAK_CLIENT_SECRET du compose.
+      secret: process.env.KEYCLOAK_CLIENT_SECRET || "CHANGER-en-prod-via-KEYCLOAK_CLIENT_SECRET",
       redirectUris: ["http://localhost:3000/api/auth/callback/keycloak"],
       webOrigins: ["http://localhost:3000"],
       standardFlowEnabled: true,
@@ -101,8 +108,11 @@ async function createUser(token, email, firstName, lastName) {
     },
     body: JSON.stringify({
       type: "password",
-      value: "admin",
-      temporary: false
+      // Mot de passe initial du compte seed DEV : fourni par env
+      // (SEED_USER_PASSWORD), jamais 'admin'. Forcé temporaire pour imposer
+      // le changement à la première connexion.
+      value: process.env.SEED_USER_PASSWORD || "ChangeMoi-Immediatement-123",
+      temporary: true
     })
   });
 
@@ -110,7 +120,7 @@ async function createUser(token, email, firstName, lastName) {
     throw new Error(`Failed to set password for ${email}: ${await passRes.text()}`);
   }
 
-  console.log(`✅ User '${email}' created with password 'admin'.`);
+  console.log(`✅ User '${email}' created (mot de passe temporaire, à changer).`);
 }
 
 async function main() {

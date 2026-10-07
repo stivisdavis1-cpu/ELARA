@@ -22,12 +22,14 @@ export class TenantInterceptor implements NestInterceptor {
   async intercept(context: ExecutionContext, next: CallHandler): Promise<Observable<any>> {
     const request = context.switchToHttp().getRequest();
     const header = request.headers['x-tenant-id'];
-    const claimed = request.user?.tenantId;
-    const tenantId = (Array.isArray(header) ? header[0] : header) ?? claimed;
-
-    if (!tenantId) {
-      throw new ForbiddenException("En-tête X-Tenant-Id manquant et aucun tenant dans le jeton");
+    const brut = Array.isArray(header) ? header[0] : header;
+    // Format strict AVANT toute requête : l'en-tête voyage en clair, un
+    // `../../`, un SQL ou un objet sérialisé ne doit jamais atteindre Prisma.
+    const candidat = typeof brut === 'string' ? brut.trim() : request.user?.tenantId;
+    if (typeof candidat !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(candidat)) {
+      throw new ForbiddenException('Identifiant d’organisation invalide.');
     }
+    const tenantId = candidat;
 
     const userId = request.user?.userId;
     if (userId) {

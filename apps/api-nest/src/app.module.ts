@@ -33,6 +33,22 @@ import { MarketingModule } from './marketing/marketing.module.js';
           limit: 100,
         },
       ],
+      // Stockage DISTRIBUÉ : sans Redis, chaque instance compte ses propres
+      // requêtes en mémoire — derrière 2+ réplicas, un attaquant multiplie sa
+      // limite par le nombre d'instances. Redis unifie le compteur (même
+      // REDIS_URL que BullMQ). Repli mémoire si Redis absent (dev sans Redis),
+      // mais la prod échoue au démarrage si le stockage distribué manque : un
+      // rate-limit silencieusement local en prod serait pire qu'un crash.
+      storage: (() => {
+        const url = process.env.REDIS_URL;
+        if (url) return new ThrottlerStorageRedisService(url);
+        if (process.env.NODE_ENV === 'production') {
+          throw new Error(
+            'REDIS_URL manquante : le rate-limit distribué est obligatoire en production.',
+          );
+        }
+        return undefined;
+      })(),
       // Derrière le proxy Next.js (rewrites) ou l'ingress, l'IP du visiteur
       // n'est pas `req.ip` (qui verrait toujours le proxy) : elle arrive dans
       // `x-forwarded-for`. On retient la DERNIÈRE adresse de la liste, celle

@@ -1,6 +1,6 @@
 # Statut du projet ELARA
 
-> **Dernière mise à jour :** 6 octobre 2026 — commit `8a4b0c9` (pushé sur `main`)
+> **Dernière mise à jour :** 7 octobre 2026 — durcissement sécurité « Urgence + socle » (voir §8)
 
 ## 1. Résumé général
 
@@ -101,7 +101,31 @@ anti-régression.
   (ancre `#conditions`) — un éventuel contrat séparé reste à fournir par le
   juridique.
 
-## 7. Prochaines étapes
+## 8. Durcissement sécurité (7 octobre 2026)
+
+Périmètre « Urgence + socle » implémenté et validé (tsc + 42 tests + lint 0
+erreur + build OK, dont 9 tests `security.spec.ts` qui verrouillent chaque
+mesure en CI) :
+
+| Mesure | Fichier |
+|---|---|
+| Secrets `.env` retirés du suivi git (`git rm --cached`) | — |
+| CORS fermé (liste blanche, pas d'origine tierce) | `api-nest/src/main.ts` |
+| En-têtes : `x-powered-by` off, nosniff, `X-Frame-Options: DENY`, Referrer-Policy, Permissions-Policy, HSTS conditionnel TLS | `api-nest/src/main.ts` |
+| Corps JSON/URL bornés à 1 Mo (anti-DoS mémoire) | `api-nest/src/main.ts` |
+| Swagger hors production + jeton `DOCS_TOKEN` (comparaison constante, 404 sinon) | `api-nest/src/main.ts` |
+| Erreurs 500 masquées (référence opaque `ERR-…`, détail au log serveur) | `common/filters/http-exception.filter.ts` |
+| Throttler adossé à Redis (échec au démarrage en prod sans `REDIS_URL`) | `api-nest/src/app.module.ts` |
+| `tenantId` : format strict avant toute requête | `tenant/tenant.interceptor.ts` |
+| Inscription : DTO fermé + rate-limit 5/10 min | `utilisateurs/inscription.dto.ts`, `inscription.controller.ts` |
+| Compose : zéro secret en clair (variables obligatoires, fail-fast) | `docker-compose.yml`, `.env.example` (nouveau) |
+| Seed Keycloak : secrets via env, mot de passe seed temporaire | `infra/init_keycloak.js` |
+
+**Reste à faire côté opérateur (hors code) :** rotation des secrets exposés
+dans l'historique git (Supabase `DATABASE_URL`, Keycloak, MinIO, `AUTH_SECRET`)
++ éventuelle purge d'historique ; voir `docs/deploiement.md` §12.
+
+## 9. Prochaines étapes
 1. Sécuriser les `.env` (voir §6).
 2. Renseigner `NEXT_PUBLIC_SITE_URL` en production (défaut `https://www.elara.app`).
 3. Revue juridique des textes `/confidentialite`.
