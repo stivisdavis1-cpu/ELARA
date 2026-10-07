@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+
+/**
+ * Alphabet d'affichage (prénoms, raisons sociales, messages) : lettres
+ * Unicode, espaces et ponctuation courante — jamais de chevrons, jamais de
+ * point-virgule ni d'esperluette. Un visiteur « <script>alert(1)</script> »
+ * reçoit un 400 AVANT la base, au lieu d'y stocker un XSS réfléchi plus tard
+ * par une page d'administration.
+ */
+const ALPHABET_AFFICHAGE = /^[\p{L}\p{M}0-9 .,'’\-()]+$/u;
 
 /** Libellés exacts des options du sélecteur « Formule visée » de la landing. */
 export const FORMULES_DEMO = [
@@ -24,6 +33,9 @@ export class InscriptionListeAttenteDto {
   @IsString()
   @IsNotEmpty({ message: 'Le prénom est obligatoire.' })
   @MaxLength(80, { message: 'Le prénom est trop long (80 caractères maximum).' })
+  @Matches(ALPHABET_AFFICHAGE, {
+    message: 'Le prénom contient des caractères interdits.',
+  })
   prenom!: string;
 
   @ApiProperty({
@@ -39,6 +51,9 @@ export class InscriptionListeAttenteDto {
   @IsOptional()
   @IsString()
   @MaxLength(120, { message: "Le nom d'entreprise est trop long." })
+  @Matches(ALPHABET_AFFICHAGE, {
+    message: "Le nom d'entreprise contient des caractères interdits.",
+  })
   entreprise?: string;
 
   @ApiPropertyOptional({ description: "Code de parrainage de l'invitation utilisée", maxLength: 40 })
@@ -66,12 +81,14 @@ export class DemandeDemoDto {
   @IsString()
   @IsNotEmpty({ message: 'Le prénom est obligatoire.' })
   @MaxLength(80)
+  @Matches(ALPHABET_AFFICHAGE, { message: 'Le prénom contient des caractères interdits.' })
   prenom!: string;
 
   @ApiProperty({ description: 'Nom', example: 'Ngono', maxLength: 80 })
   @IsString()
   @IsNotEmpty({ message: 'Le nom est obligatoire.' })
   @MaxLength(80)
+  @Matches(ALPHABET_AFFICHAGE, { message: 'Le nom contient des caractères interdits.' })
   nom!: string;
 
   @ApiProperty({ description: 'Adresse e-mail professionnelle', example: 'amina@exemple.cm', maxLength: 254 })
@@ -83,12 +100,21 @@ export class DemandeDemoDto {
   @IsString()
   @IsNotEmpty({ message: 'Le téléphone est obligatoire.' })
   @MaxLength(40, { message: 'Le numéro de téléphone est trop long.' })
+  // Format E.164 souple : + suivi de 7 à 15 chiffres, espaces et tirets
+  // tolérés à la saisie puis supprimés côté service. Sans cela, le champ
+  // devenait un fourre-tout (« appelez-moi », URL, script) exploitable par
+  // l'équipe commerciale qui le rappelle — et par l'export CSV (injection
+  // de formule `=CMD(...)` à l'ouverture dans un tableur).
+  @Matches(/^\+?[0-9][0-9 .\-()]{5,38}[0-9]$/, {
+    message: 'Le numéro de téléphone est invalide (format attendu : +237 6 00 00 00 00).',
+  })
   telephone!: string;
 
   @ApiProperty({ description: "Nom de l'entreprise", example: 'Sanaga Distribution', maxLength: 120 })
   @IsString()
   @IsNotEmpty({ message: "Le nom de l'entreprise est obligatoire." })
   @MaxLength(120)
+  @Matches(ALPHABET_AFFICHAGE, { message: "Le nom d'entreprise contient des caractères interdits." })
   entreprise!: string;
 
   @ApiProperty({ description: 'Formule visée', enum: FORMULES_DEMO })
@@ -101,6 +127,7 @@ export class DemandeDemoDto {
   @IsOptional()
   @IsString()
   @MaxLength(2000, { message: 'Le message est trop long (2000 caractères maximum).' })
+  @Matches(ALPHABET_AFFICHAGE, { message: 'Le message contient des caractères interdits.' })
   message?: string;
 
   /** Pot de miel — absent de Swagger (voir la note du premier DTO). */

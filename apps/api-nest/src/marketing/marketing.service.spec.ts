@@ -213,7 +213,8 @@ describe('MarketingService', () => {
           prenom: 'Amina',
           nom: 'Ngono',
           email: 'amina@exemple.cm',
-          telephone: '+237 6 00 00 00 00',
+          // Normalisation canonique : espaces et tirets supprimés au stockage.
+          telephone: '+237600000000',
           entreprise: 'Sanaga',
           formule: 'Pro (24 900 F/mois)',
           message: "Besoin d'aide.",
@@ -253,6 +254,57 @@ describe('MarketingService', () => {
       });
       const erreurs = await validate(dto);
       expect(erreurs.map((e) => e.property)).toContain('formule');
+    });
+
+    it('refuse le XSS stocké dans le prénom (liste attente)', async () => {
+      const dto = plainToInstance(InscriptionListeAttenteDto, {
+        prenom: '<script>alert(1)</script>',
+        email: 'amina@exemple.cm',
+        site_web: '',
+      });
+      const erreurs = await validate(dto);
+      expect(erreurs.map((e) => e.property)).toContain('prenom');
+    });
+
+    it("refuse le XSS stocké dans l'entreprise et le message (démo)", async () => {
+      const dto = plainToInstance(DemandeDemoDto, {
+        prenom: 'Amina',
+        nom: 'Ngono',
+        email: 'amina@exemple.cm',
+        telephone: '+237 6 00 00 00 00',
+        entreprise: 'Sanaga"><img src=x onerror=alert(1)>',
+        formule: 'Pro (24 900 F/mois)',
+        message: 'Bonjour <b>chef</b>',
+        site_web: '',
+      });
+      const proprietes = (await validate(dto)).map((e) => e.property);
+      expect(proprietes).toContain('entreprise');
+      expect(proprietes).toContain('message');
+    });
+
+    it('refuse un téléphone fourre-tout (démo)', async () => {
+      const dto = plainToInstance(DemandeDemoDto, {
+        prenom: 'Amina',
+        nom: 'Ngono',
+        email: 'amina@exemple.cm',
+        telephone: 'appelez-moi vite =CMD(1)',
+        entreprise: 'Sanaga',
+        formule: 'Pro (24 900 F/mois)',
+        site_web: '',
+      });
+      const erreurs = await validate(dto);
+      expect(erreurs.map((e) => e.property)).toContain('telephone');
+    });
+
+    it('accepte les prénoms accentués et les apostrophes légitimes', async () => {
+      for (const prenom of ['Amina', 'Jean-Baptiste', "N'Djamena", 'François']) {
+        const dto = plainToInstance(InscriptionListeAttenteDto, {
+          prenom,
+          email: 'amina@exemple.cm',
+          site_web: '',
+        });
+        expect(await validate(dto)).toEqual([]);
+      }
     });
   });
 });

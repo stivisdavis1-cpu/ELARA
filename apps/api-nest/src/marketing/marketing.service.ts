@@ -131,7 +131,14 @@ export class MarketingService {
     const inscrit = await this.prisma.listeAttente.findUnique({
       where: { code_parrain: codePropre },
     });
-    if (!inscrit) throw new NotFoundException('Code de parrainage introuvable.');
+    if (!inscrit) {
+      // Anti-énumération : un code inexistant coûte ~600 ms au lieu de ~50 ms.
+      // Pour un visiteur qui se trompe une fois, c'est imperceptible ; pour un
+      // robot qui balaie les 31^6 combinaisons, c'est 19 000 ans au lieu de
+      // 1 600. Le message reste identique (aucun oracle oui/non).
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      throw new NotFoundException('Code de parrainage introuvable.');
+    }
 
     const [position, parrainages] = await Promise.all([
       this.calculerPosition(inscrit.id),
@@ -143,12 +150,16 @@ export class MarketingService {
 
   /** Dépose une demande de démonstration réelle et renvoie sa référence. */
   async demanderDemo(dto: DemandeDemoDto) {
+    // Normalisation canonique : '+237 6 00-00-00-00' → '+237600000000'.
+    // Le stockage d'une seule forme empêche les doublons déguisés et les
+    // exports hétérogènes ; le DTO a déjà garanti le format en amont.
+    const telephone = dto.telephone.replace(/[ .\-()]/g, '');
     const demande = await this.prisma.demandeDemo.create({
       data: {
         prenom: dto.prenom.trim(),
         nom: dto.nom.trim(),
         email: dto.email.trim().toLowerCase(),
-        telephone: dto.telephone.trim(),
+        telephone,
         entreprise: dto.entreprise.trim(),
         formule: dto.formule,
         message: dto.message?.trim() || null,

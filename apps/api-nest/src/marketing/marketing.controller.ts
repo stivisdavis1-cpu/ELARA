@@ -26,7 +26,7 @@ export class MarketingController {
   }
 
   @Get('liste-attente/:code')
-  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({ summary: 'Relire la position réelle liée à un code de parrainage' })
   @ApiParam({ name: 'code', description: 'Code de parrainage (ex. XH3K9P)' })
   restaurer(@Param('code') code: string) {
