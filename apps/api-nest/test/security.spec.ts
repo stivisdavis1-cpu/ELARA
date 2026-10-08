@@ -66,6 +66,16 @@ describe('Securite - garde-fous anti-regression', () => {
     expect(ctrl).not.toMatch(/@Body\(\) data: any/);
   });
 
+  it('validation globale : whitelist + forbidNonWhitelisted actives', () => {
+    // Sans ces deux options, le DTO fermé ne s'applique plus : tout champ
+    // (dont `role`) repasserait, et les @Transform (« » → undefined)
+    // d'ingénierie en amont ne seraient même pas exécutés.
+    const c = fs.readFileSync(mainTs, 'utf8');
+    expect(c).toMatch(/new ValidationPipe\(\{\s*whitelist:\s*true/);
+    expect(c).toMatch(/forbidNonWhitelisted:\s*true/);
+    expect(c).toMatch(/transform:\s*true/);
+  });
+
   it('x-powered-by desactive (empreinte Express masquee)', () => {
     const c = fs.readFileSync(mainTs, 'utf8');
     expect(c).toMatch(/x-powered-by/);
